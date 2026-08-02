@@ -1,13 +1,14 @@
 from datetime import date
 from decimal import Decimal
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 class TransactionInput(BaseModel):
     transaction_id:str
     date: date
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     currency: str
     merchant: str
     category: str
-    transaction_type: str
-    
+    transaction_type: Literal["debit","credit"]
