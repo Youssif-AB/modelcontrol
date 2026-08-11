@@ -1,10 +1,10 @@
 from fastapi import FastAPI, UploadFile, Depends, status, HTTPException
-from app.schemas import ModelCreate
+from app.schemas import ModelCreate, ModelVersionCreate, ModelVersionRead
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import ModelRecord
+from app.models import ModelRecord, ModelVersion
 from app.schemas import ModelCreate, ModelRead
 
 
@@ -63,3 +63,57 @@ def get_model(
         )
 
     return model
+@app.post(
+    "/models/{model_id}/versions",
+    response_model=ModelVersionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_model_version(
+    model_id: int,
+    version: ModelVersionCreate,
+    db: Session = Depends(get_db),
+) -> ModelVersion:
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    record = ModelVersion(
+        model_id=model_id,
+        version_number=version.version_number,
+        description=version.description,
+    )
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return record
+
+
+@app.get(
+    "/models/{model_id}/versions",
+    response_model=list[ModelVersionRead],
+)
+def list_model_versions(
+    model_id: int,
+    db: Session = Depends(get_db),
+):
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    statement = (
+        select(ModelVersion)
+        .where(ModelVersion.model_id == model_id)
+        .order_by(ModelVersion.version_number)
+    )
+
+    return db.scalars(statement).all()

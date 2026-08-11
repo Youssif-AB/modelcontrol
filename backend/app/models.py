@@ -1,4 +1,4 @@
-from sqlalchemy import String, Text
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -22,4 +22,21 @@ class ModelRecord(Base):
         String(30),
         nullable=False,
         server_default="draft",
+    )
+
+class ModelVersion(Base):
+    __tablename__ = "model_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    model_id: Mapped[int] = mapped_column(
+        ForeignKey("models.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    version_number: Mapped[int] = mapped_column(nullable=False)
+
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
     )

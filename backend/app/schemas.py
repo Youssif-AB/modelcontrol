@@ -13,7 +13,7 @@ class LifecycleStatus(str, Enum):
     under_review = "under_review"
     approved = "approved"
     retired = "retired"
-    
+
 class ModelType(str, Enum):
     classification = "classification"
     regression = "regression"
@@ -37,3 +37,16 @@ class ModelRead(BaseModel):
     model_type:ModelType
     risk_tier: RiskTier
     lifecycle_status: LifecycleStatus
+
+class ModelVersionCreate(BaseModel):
+    version_number: int = Field(ge=1)
+    description: str = Field(min_length=5, max_length=500)
+
+
+class ModelVersionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    model_id: int
+    version_number: int
+    description: str
