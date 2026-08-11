@@ -12,3 +12,14 @@ class ModelRecord(Base):
     business_area: Mapped[str] = mapped_column(String(100))
     owner_email: Mapped[str] = mapped_column(String(320))
     model_type: Mapped[str] = mapped_column(String(30))
+    risk_tier: Mapped[str] = mapped_column(
+    String(20),
+    nullable=False,
+    server_default="medium",
+    )
+
+    lifecycle_status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        server_default="draft",
+    )

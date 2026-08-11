@@ -34,6 +34,7 @@ def create_model(
         business_area = model.business_area,
         owner_email = str(model.owner_email),
         model_type = model.model_type.value,
+        risk_tier=model.risk_tier.value,
     )
 
     db.add(record)
