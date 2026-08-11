@@ -50,3 +50,13 @@ class ModelVersionRead(BaseModel):
     model_id: int
     version_number: int
     description: str
+
+class LifecycleAction(str, Enum):
+    submit_for_review = "submit_for_review"
+    approve = "approve"
+    reject = "reject"
+    retire = "retire"
+
+
+class LifecycleActionRequest(BaseModel):
+    action: LifecycleAction

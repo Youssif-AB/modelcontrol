@@ -6,9 +6,17 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models import ModelRecord, ModelVersion
 from app.schemas import ModelCreate, ModelRead
+from app.schemas import LifecycleAction, LifecycleActionRequest
 
 
 app = FastAPI(title="ModelControl API")
+
+LIFECYCLE_TRANSITIONS = {
+    ("draft", "submit_for_review"): "under_review",
+    ("under_review", "approve"): "approved",
+    ("under_review", "reject"): "draft",
+    ("approved", "retire"): "retired",
+}
 
 @app.get("/health")
 def health_check() -> dict[str,str]:
@@ -117,3 +125,43 @@ def list_model_versions(
     )
 
     return db.scalars(statement).all()
+
+@app.patch(
+    "/models/{model_id}/lifecycle",
+    response_model=ModelRead,
+)
+def update_model_lifecycle(
+    model_id: int,
+    request: LifecycleActionRequest,
+    db: Session = Depends(get_db),
+) -> ModelRecord:
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    transition = (
+        model.lifecycle_status,
+        request.action.value,
+    )
+
+    next_status = LIFECYCLE_TRANSITIONS.get(transition)
+
+    if next_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Cannot {request.action.value} model "
+                f"from {model.lifecycle_status} status"
+            ),
+        )
+
+    model.lifecycle_status = next_status
+
+    db.commit()
+    db.refresh(model)
+
+    return model
