@@ -4,10 +4,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import ModelRecord, ModelVersion, ModelFinding
+from app.models import ModelRecord, ModelVersion, ModelFinding, AuditEvent
 from app.schemas import ModelCreate, ModelRead
 from app.schemas import LifecycleAction, LifecycleActionRequest
-from app.schemas import FindingCreate, FindingRead, FindingResolveRequest
+from app.schemas import FindingCreate, FindingRead, FindingResolveRequest, AuditEventRead
 
 
 app = FastAPI(title="ModelControl API")
@@ -18,6 +18,20 @@ LIFECYCLE_TRANSITIONS = {
     ("under_review", "reject"): "draft",
     ("approved", "retire"): "retired",
 }
+
+def add_audit_event(
+    db: Session,
+    model_id: int,
+    event_type: str,
+    description: str,
+) -> None:
+    event = AuditEvent(
+        model_id=model_id,
+        event_type=event_type,
+        description=description,
+    )
+
+    db.add(event)
 
 @app.get("/health")
 def health_check() -> dict[str,str]:
@@ -47,6 +61,15 @@ def create_model(
     )
 
     db.add(record)
+    db.flush()
+
+    add_audit_event(
+        db,
+        record.id,
+        "model_created",
+        f"Model '{record.name}' was registered.",
+    )
+
     db.commit()
     db.refresh(record)
 
@@ -97,6 +120,14 @@ def create_model_version(
     )
 
     db.add(record)
+
+    add_audit_event(
+        db,
+        model_id,
+        "version_created",
+        f"Version {version.version_number} was added.",
+    )
+    
     db.commit()
     db.refresh(record)
 
@@ -150,6 +181,7 @@ def update_model_lifecycle(
     )
 
     next_status = LIFECYCLE_TRANSITIONS.get(transition)
+    previous_status = model.lifecycle_status
 
     if next_status is None:
         raise HTTPException(
@@ -161,6 +193,13 @@ def update_model_lifecycle(
         )
 
     model.lifecycle_status = next_status
+
+    add_audit_event(
+        db,
+        model_id,
+        "lifecycle_changed",
+        f"Lifecycle changed from {previous_status} to {next_status}.",
+    )
 
     db.commit()
     db.refresh(model)
@@ -193,6 +232,14 @@ def create_finding(
     )
 
     db.add(record)
+
+    add_audit_event(
+        db,
+        model_id,
+        "finding_created",
+        f"Finding '{finding.title}' was created with {finding.severity.value} severity.",
+    )
+    
     db.commit()
     db.refresh(record)
 
@@ -248,7 +295,37 @@ def resolve_finding(
     finding.status = "resolved"
     finding.resolution_notes = request.resolution_notes
 
+    add_audit_event(
+        db,
+        finding.model_id,
+        "finding_resolved",
+        f"Finding '{finding.title}' was resolved.",
+    )
     db.commit()
     db.refresh(finding)
 
     return finding
+
+@app.get(
+    "/models/{model_id}/audit",
+    response_model=list[AuditEventRead],
+)
+def list_audit_events(
+    model_id: int,
+    db: Session = Depends(get_db),
+):
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    statement = (
+        select(AuditEvent)
+        .where(AuditEvent.model_id == model_id)
+        .order_by(AuditEvent.created_at, AuditEvent.id)
+    )
+
+    return db.scalars(statement).all()

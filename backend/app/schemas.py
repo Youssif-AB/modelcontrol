@@ -1,5 +1,5 @@
 from enum import Enum
-
+from datetime import datetime
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 class RiskTier(str, Enum):
@@ -93,3 +93,12 @@ class FindingRead(BaseModel):
 
 class FindingResolveRequest(BaseModel):
     resolution_notes: str = Field(min_length=5, max_length=1000)
+
+class AuditEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    model_id: int
+    event_type: str
+    description: str
+    created_at: datetime
