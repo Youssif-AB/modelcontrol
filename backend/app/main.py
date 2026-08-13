@@ -4,9 +4,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import ModelRecord, ModelVersion
+from app.models import ModelRecord, ModelVersion, ModelFinding
 from app.schemas import ModelCreate, ModelRead
 from app.schemas import LifecycleAction, LifecycleActionRequest
+from app.schemas import FindingCreate, FindingRead, FindingResolveRequest
 
 
 app = FastAPI(title="ModelControl API")
@@ -165,3 +166,89 @@ def update_model_lifecycle(
     db.refresh(model)
 
     return model
+
+@app.post(
+    "/models/{model_id}/findings",
+    response_model=FindingRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_finding(
+    model_id: int,
+    finding: FindingCreate,
+    db: Session = Depends(get_db),
+) -> ModelFinding:
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    record = ModelFinding(
+        model_id=model_id,
+        title=finding.title,
+        description=finding.description,
+        severity=finding.severity.value,
+    )
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+
+    return record
+
+@app.get(
+    "/models/{model_id}/findings",
+    response_model=list[FindingRead],
+)
+def list_findings(
+    model_id: int,
+    db: Session = Depends(get_db),
+):
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    statement = (
+        select(ModelFinding)
+        .where(ModelFinding.model_id == model_id)
+        .order_by(ModelFinding.id)
+    )
+
+    return db.scalars(statement).all()
+
+@app.patch(
+    "/findings/{finding_id}/resolve",
+    response_model=FindingRead,
+)
+def resolve_finding(
+    finding_id: int,
+    request: FindingResolveRequest,
+    db: Session = Depends(get_db),
+) -> ModelFinding:
+    finding = db.get(ModelFinding, finding_id)
+
+    if finding is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Finding not found",
+        )
+
+    if finding.status == "resolved":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Finding is already resolved",
+        )
+
+    finding.status = "resolved"
+    finding.resolution_notes = request.resolution_notes
+
+    db.commit()
+    db.refresh(finding)
+
+    return finding

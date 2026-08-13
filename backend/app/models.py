@@ -40,3 +40,39 @@ class ModelVersion(Base):
         Text,
         nullable=False,
     )
+
+class ModelFinding(Base):
+    __tablename__ = "model_findings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    model_id: Mapped[int] = mapped_column(
+        ForeignKey("models.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    title: Mapped[str] = mapped_column(
+        String(150),
+        nullable=False,
+    )
+
+    description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    severity: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="open",
+    )
+
+    resolution_notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
