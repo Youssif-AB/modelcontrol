@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, String, Text, func, DateTime
+from sqlalchemy import ForeignKey, String, Text, func, DateTime, Float
 from sqlalchemy.orm import Mapped, mapped_column
 from datetime import datetime
 
@@ -96,6 +96,52 @@ class AuditEvent(Base):
 
     description: Mapped[str] = mapped_column(
         Text,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+class MonitoringRecord(Base):
+    __tablename__ = "monitoring_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    model_id: Mapped[int] = mapped_column(
+        ForeignKey("models.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    metric_name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    baseline_value: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+
+    current_value: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+
+    direction: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+    )
+
+    degradation: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(20),
         nullable=False,
     )
 

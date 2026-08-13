@@ -102,3 +102,36 @@ class AuditEventRead(BaseModel):
     event_type: str
     description: str
     created_at: datetime
+
+class MetricDirection(str, Enum):
+    higher_is_better = "higher_is_better"
+    lower_is_better = "lower_is_better"
+
+
+class MonitoringStatus(str, Enum):
+    healthy = "healthy"
+    warning = "warning"
+    critical = "critical"
+
+
+class MonitoringCreate(BaseModel):
+    metric_name: str = Field(min_length=2, max_length=100)
+    baseline_value: float = Field(gt=0)
+    current_value: float = Field(ge=0)
+    direction: MetricDirection
+    warning_threshold: float = Field(default=0.05, gt=0)
+    critical_threshold: float = Field(default=0.10, gt=0)
+
+
+class MonitoringRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    model_id: int
+    metric_name: str
+    baseline_value: float
+    current_value: float
+    direction: MetricDirection
+    degradation: float
+    status: MonitoringStatus
+    created_at: datetime

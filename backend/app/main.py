@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models import ModelRecord, ModelVersion, ModelFinding, AuditEvent
+from app.models import ModelRecord, ModelVersion, ModelFinding, AuditEvent, MonitoringRecord
 from app.schemas import ModelCreate, ModelRead
-from app.schemas import LifecycleAction, LifecycleActionRequest
+from app.schemas import LifecycleAction, LifecycleActionRequest, MetricDirection, MonitoringCreate, MonitoringRead
 from app.schemas import FindingCreate, FindingRead, FindingResolveRequest, AuditEventRead
 
 
@@ -18,6 +18,29 @@ LIFECYCLE_TRANSITIONS = {
     ("under_review", "reject"): "draft",
     ("approved", "retire"): "retired",
 }
+
+def calculate_degradation(
+    baseline: float,
+    current: float,
+    direction: MetricDirection,
+) -> float:
+    if direction == MetricDirection.higher_is_better:
+        return (baseline - current) / baseline
+
+    return (current - baseline) / baseline
+
+def determine_monitoring_status(
+    degradation: float,
+    warning_threshold: float,
+    critical_threshold: float,
+) -> str:
+    if degradation >= critical_threshold:
+        return "critical"
+
+    if degradation >= warning_threshold:
+        return "warning"
+
+    return "healthy"
 
 def add_audit_event(
     db: Session,
@@ -326,6 +349,90 @@ def list_audit_events(
         select(AuditEvent)
         .where(AuditEvent.model_id == model_id)
         .order_by(AuditEvent.created_at, AuditEvent.id)
+    )
+
+    return db.scalars(statement).all()
+
+@app.post(
+    "/models/{model_id}/monitoring",
+    response_model=MonitoringRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_monitoring_record(
+    model_id: int,
+    monitoring: MonitoringCreate,
+    db: Session = Depends(get_db),
+) -> MonitoringRecord:
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    if monitoring.critical_threshold <= monitoring.warning_threshold:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Critical threshold must be greater than warning threshold",
+        )
+
+    degradation = calculate_degradation(
+        monitoring.baseline_value,
+        monitoring.current_value,
+        monitoring.direction,
+    )
+
+    monitoring_status = determine_monitoring_status(
+        degradation,
+        monitoring.warning_threshold,
+        monitoring.critical_threshold,
+    )
+
+    record = MonitoringRecord(
+        model_id=model_id,
+        metric_name=monitoring.metric_name,
+        baseline_value=monitoring.baseline_value,
+        current_value=monitoring.current_value,
+        direction=monitoring.direction.value,
+        degradation=degradation,
+        status=monitoring_status,
+    )
+
+    db.add(record)
+
+    add_audit_event(
+        db,
+        model_id,
+        "monitoring_recorded",
+        f"{monitoring.metric_name} monitoring status recorded as {monitoring_status}.",
+    )
+
+    db.commit()
+    db.refresh(record)
+
+    return record
+
+@app.get(
+    "/models/{model_id}/monitoring",
+    response_model=list[MonitoringRead],
+)
+def list_monitoring_records(
+    model_id: int,
+    db: Session = Depends(get_db),
+):
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    statement = (
+        select(MonitoringRecord)
+        .where(MonitoringRecord.model_id == model_id)
+        .order_by(MonitoringRecord.created_at, MonitoringRecord.id)
     )
 
     return db.scalars(statement).all()
