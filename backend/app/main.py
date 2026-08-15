@@ -3,7 +3,7 @@ from app.schemas import ModelCreate, ModelVersionCreate, ModelVersionRead
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from fastapi.middleware.cors import CORSMiddleware
-
+from app.auth import router as auth_router
 from app.database import get_db
 from app.models import ModelRecord, ModelVersion, ModelFinding, AuditEvent, MonitoringRecord
 from app.schemas import ModelCreate, ModelRead
@@ -12,6 +12,7 @@ from app.schemas import FindingCreate, FindingRead, FindingResolveRequest, Audit
 
 
 app = FastAPI(title="ModelControl API")
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -135,3 +135,30 @@ class MonitoringRead(BaseModel):
     degradation: float
     status: MonitoringStatus
     created_at: datetime
+
+class UserRole(str, Enum):
+    admin = "admin"
+    model_owner = "model_owner"
+    reviewer = "reviewer"
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    full_name: str = Field(min_length=2, max_length=150)
+    password: str = Field(min_length=8, max_length=128)
+    role: UserRole
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: EmailStr
+    full_name: str
+    role: UserRole
+    is_active: bool
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
