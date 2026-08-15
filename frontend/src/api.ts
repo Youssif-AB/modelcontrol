@@ -7,6 +7,8 @@ import type {
   ModelRecord,
   ModelVersion,
   ModelVersionCreate,
+  MonitoringCreate,
+  MonitoringRecord,
 } from "./types";
 
 const API_BASE_URL =
@@ -175,4 +177,33 @@ export async function fetchAudit(
   );
 
   return handleResponse<AuditEvent[]>(response);
+}
+
+export async function fetchMonitoring(
+  modelId: number,
+): Promise<MonitoringRecord[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/monitoring`,
+  );
+
+  return handleResponse<MonitoringRecord[]>(response);
+}
+
+
+export async function createMonitoringRecord(
+  modelId: number,
+  monitoring: MonitoringCreate,
+): Promise<MonitoringRecord> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/monitoring`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(monitoring),
+    },
+  );
+
+  return handleResponse<MonitoringRecord>(response);
 }

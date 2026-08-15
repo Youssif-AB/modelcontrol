@@ -79,3 +79,33 @@ export interface AuditEvent {
   description: string;
   created_at: string;
 }
+
+export type MetricDirection =
+  | "higher_is_better"
+  | "lower_is_better";
+
+export type MonitoringStatus =
+  | "healthy"
+  | "warning"
+  | "critical";
+
+export interface MonitoringRecord {
+  id: number;
+  model_id: number;
+  metric_name: string;
+  baseline_value: number;
+  current_value: number;
+  direction: MetricDirection;
+  degradation: number;
+  status: MonitoringStatus;
+  created_at: string;
+}
+
+export interface MonitoringCreate {
+  metric_name: string;
+  baseline_value: number;
+  current_value: number;
+  direction: MetricDirection;
+  warning_threshold: number;
+  critical_threshold: number;
+}

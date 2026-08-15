@@ -18,6 +18,7 @@ import {
 
 import AuditPanel from "../components/AuditPanel";
 import FindingsPanel from "../components/FindingsPanel";
+import MonitoringPanel from "../components/MonitoringPanel";
 
 import type {
   LifecycleAction,
@@ -49,17 +50,25 @@ function ModelDetail() {
   const [versionNumber, setVersionNumber] =
     useState(1);
 
-  const [versionDescription, setVersionDescription] =
-    useState("");
+  const [
+    versionDescription,
+    setVersionDescription,
+  ] = useState("");
 
-  const [submittingVersion, setSubmittingVersion] =
-    useState(false);
+  const [
+    submittingVersion,
+    setSubmittingVersion,
+  ] = useState(false);
 
-  const [updatingLifecycle, setUpdatingLifecycle] =
-    useState(false);
+  const [
+    updatingLifecycle,
+    setUpdatingLifecycle,
+  ] = useState(false);
 
-  const [auditRefreshToken, setAuditRefreshToken] =
-    useState(0);
+  const [
+    auditRefreshToken,
+    setAuditRefreshToken,
+  ] = useState(0);
 
 
   function refreshAudit() {
@@ -140,7 +149,6 @@ function ModelDetail() {
         );
 
       setModel(updated);
-
       refreshAudit();
     } catch (err) {
       if (err instanceof Error) {
@@ -272,6 +280,9 @@ function ModelDetail() {
             This model has been retired.
           </p>
         );
+
+      default:
+        return null;
     }
   }
 
@@ -331,6 +342,7 @@ function ModelDetail() {
               </div>
             </header>
 
+
             <section className="detail-grid">
               <div className="detail-card">
                 <span>
@@ -376,11 +388,13 @@ function ModelDetail() {
               </div>
             </section>
 
+
             {actionError && (
               <p className="error">
                 {actionError}
               </p>
             )}
+
 
             <section className="management-grid">
               <div className="management-card">
@@ -417,6 +431,7 @@ function ModelDetail() {
                 </div>
               </div>
 
+
               <div className="management-card">
                 <div className="section-heading">
                   <div>
@@ -425,8 +440,8 @@ function ModelDetail() {
                     </h2>
 
                     <p>
-                      Register a new
-                      version of this model.
+                      Register a new version
+                      of this model.
                     </p>
                   </div>
                 </div>
@@ -495,6 +510,7 @@ function ModelDetail() {
               </div>
             </section>
 
+
             <section className="inventory version-section">
               <div className="section-heading">
                 <div>
@@ -512,8 +528,7 @@ function ModelDetail() {
 
               {versions.length === 0 ? (
                 <p className="empty-state">
-                  No versions registered
-                  yet.
+                  No versions registered yet.
                 </p>
               ) : (
                 <div className="table-wrapper">
@@ -561,6 +576,7 @@ function ModelDetail() {
               )}
             </section>
 
+
             <FindingsPanel
               modelId={
                 parsedModelId
@@ -569,6 +585,17 @@ function ModelDetail() {
                 refreshAudit
               }
             />
+
+
+            <MonitoringPanel
+              modelId={
+                parsedModelId
+              }
+              onChanged={
+                refreshAudit
+              }
+            />
+
 
             <AuditPanel
               modelId={
