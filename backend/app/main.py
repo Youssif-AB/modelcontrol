@@ -1,17 +1,42 @@
-from fastapi import FastAPI, UploadFile, Depends, status, HTTPException
-from app.schemas import ModelCreate, ModelVersionCreate, ModelVersionRead
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.auth import router as auth_router
 from app.database import get_db
-from app.models import ModelRecord, ModelVersion, ModelFinding, AuditEvent, MonitoringRecord
-from app.schemas import ModelCreate, ModelRead
-from app.schemas import LifecycleAction, LifecycleActionRequest, MetricDirection, MonitoringCreate, MonitoringRead
-from app.schemas import FindingCreate, FindingRead, FindingResolveRequest, AuditEventRead
+from app.models import (
+    AuditEvent,
+    ModelFinding,
+    ModelRecord,
+    ModelVersion,
+    MonitoringRecord,
+    User,
+)
+from app.permissions import (
+    ensure_lifecycle_permission,
+    ensure_model_owner_or_admin,
+    require_roles,
+)
+from app.schemas import (
+    AuditEventRead,
+    FindingCreate,
+    FindingRead,
+    FindingResolveRequest,
+    LifecycleActionRequest,
+    MetricDirection,
+    ModelCreate,
+    ModelRead,
+    ModelVersionCreate,
+    ModelVersionRead,
+    MonitoringCreate,
+    MonitoringRead,
+)
+from app.security import get_current_user
 
 
 app = FastAPI(title="ModelControl API")
+
 app.include_router(auth_router)
 
 app.add_middleware(
@@ -25,12 +50,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 LIFECYCLE_TRANSITIONS = {
     ("draft", "submit_for_review"): "under_review",
     ("under_review", "approve"): "approved",
     ("under_review", "reject"): "draft",
     ("approved", "retire"): "retired",
 }
+
 
 def calculate_degradation(
     baseline: float,
@@ -41,6 +68,7 @@ def calculate_degradation(
         return (baseline - current) / baseline
 
     return (current - baseline) / baseline
+
 
 def determine_monitoring_status(
     degradation: float,
@@ -54,6 +82,7 @@ def determine_monitoring_status(
         return "warning"
 
     return "healthy"
+
 
 def add_audit_event(
     db: Session,
@@ -69,12 +98,19 @@ def add_audit_event(
 
     db.add(event)
 
-@app.get("/health")
-def health_check() -> dict[str,str]:
-    return {"status":"ok"}
 
-@app.post("/models/validate")
-def validate_model(model: ModelCreate) -> ModelCreate:
+@app.get("/health")
+def health_check() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post(
+    "/models/validate",
+    dependencies=[Depends(get_current_user)],
+)
+def validate_model(
+    model: ModelCreate,
+) -> ModelCreate:
     return model
 
 
@@ -84,15 +120,34 @@ def validate_model(model: ModelCreate) -> ModelCreate:
     status_code=status.HTTP_201_CREATED,
 )
 def create_model(
-    model:ModelCreate,
-    db:Session = Depends(get_db),
+    model: ModelCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles(
+            "admin",
+            "model_owner",
+        )
+    ),
 ) -> ModelRecord:
+    if (
+        current_user.role == "model_owner"
+        and str(model.owner_email).lower()
+        != current_user.email.lower()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Model owners can only register models "
+                "under their own account"
+            ),
+        )
+
     record = ModelRecord(
         name=model.name,
-        purpose=model.business_area,
-        business_area = model.business_area,
-        owner_email = str(model.owner_email),
-        model_type = model.model_type.value,
+        purpose=model.purpose,
+        business_area=model.business_area,
+        owner_email=str(model.owner_email),
+        model_type=model.model_type.value,
         risk_tier=model.risk_tier.value,
     )
 
@@ -111,26 +166,46 @@ def create_model(
 
     return record
 
-@app.get("/models", response_model=list[ModelRead])
-def list_models(db : Session = Depends(get_db)):
-    statement = select(ModelRecord).order_by(ModelRecord.id)
-    models = db.scalars(statement).all()
-    return models
 
-@app.get("/models/{model_id}", response_model=ModelRead)
+@app.get(
+    "/models",
+    response_model=list[ModelRead],
+    dependencies=[Depends(get_current_user)],
+)
+def list_models(
+    db: Session = Depends(get_db),
+):
+    statement = (
+        select(ModelRecord)
+        .order_by(ModelRecord.id)
+    )
+
+    return db.scalars(statement).all()
+
+
+@app.get(
+    "/models/{model_id}",
+    response_model=ModelRead,
+    dependencies=[Depends(get_current_user)],
+)
 def get_model(
-    model_id:int,
+    model_id: int,
     db: Session = Depends(get_db),
 ) -> ModelRecord:
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail = "Model not found"
+            detail="Model not found",
         )
 
     return model
+
+
 @app.post(
     "/models/{model_id}/versions",
     response_model=ModelVersionRead,
@@ -140,14 +215,25 @@ def create_model_version(
     model_id: int,
     version: ModelVersionCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ) -> ModelVersion:
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Model not found",
         )
+
+    ensure_model_owner_or_admin(
+        model,
+        current_user,
+    )
 
     record = ModelVersion(
         model_id=model_id,
@@ -163,7 +249,7 @@ def create_model_version(
         "version_created",
         f"Version {version.version_number} was added.",
     )
-    
+
     db.commit()
     db.refresh(record)
 
@@ -173,12 +259,16 @@ def create_model_version(
 @app.get(
     "/models/{model_id}/versions",
     response_model=list[ModelVersionRead],
+    dependencies=[Depends(get_current_user)],
 )
 def list_model_versions(
     model_id: int,
     db: Session = Depends(get_db),
 ):
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
@@ -188,11 +278,16 @@ def list_model_versions(
 
     statement = (
         select(ModelVersion)
-        .where(ModelVersion.model_id == model_id)
-        .order_by(ModelVersion.version_number)
+        .where(
+            ModelVersion.model_id == model_id
+        )
+        .order_by(
+            ModelVersion.version_number
+        )
     )
 
     return db.scalars(statement).all()
+
 
 @app.patch(
     "/models/{model_id}/lifecycle",
@@ -202,8 +297,14 @@ def update_model_lifecycle(
     model_id: int,
     request: LifecycleActionRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ) -> ModelRecord:
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
@@ -211,13 +312,26 @@ def update_model_lifecycle(
             detail="Model not found",
         )
 
+    ensure_lifecycle_permission(
+        model,
+        request.action.value,
+        current_user,
+    )
+
     transition = (
         model.lifecycle_status,
         request.action.value,
     )
 
-    next_status = LIFECYCLE_TRANSITIONS.get(transition)
-    previous_status = model.lifecycle_status
+    next_status = (
+        LIFECYCLE_TRANSITIONS.get(
+            transition
+        )
+    )
+
+    previous_status = (
+        model.lifecycle_status
+    )
 
     if next_status is None:
         raise HTTPException(
@@ -234,13 +348,18 @@ def update_model_lifecycle(
         db,
         model_id,
         "lifecycle_changed",
-        f"Lifecycle changed from {previous_status} to {next_status}.",
+        (
+            f"Lifecycle changed from "
+            f"{previous_status} to "
+            f"{next_status}."
+        ),
     )
 
     db.commit()
     db.refresh(model)
 
     return model
+
 
 @app.post(
     "/models/{model_id}/findings",
@@ -251,8 +370,17 @@ def create_finding(
     model_id: int,
     finding: FindingCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles(
+            "admin",
+            "reviewer",
+        )
+    ),
 ) -> ModelFinding:
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
@@ -273,23 +401,32 @@ def create_finding(
         db,
         model_id,
         "finding_created",
-        f"Finding '{finding.title}' was created with {finding.severity.value} severity.",
+        (
+            f"Finding '{finding.title}' was "
+            f"created with "
+            f"{finding.severity.value} severity."
+        ),
     )
-    
+
     db.commit()
     db.refresh(record)
 
     return record
 
+
 @app.get(
     "/models/{model_id}/findings",
     response_model=list[FindingRead],
+    dependencies=[Depends(get_current_user)],
 )
 def list_findings(
     model_id: int,
     db: Session = Depends(get_db),
 ):
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
@@ -299,11 +436,17 @@ def list_findings(
 
     statement = (
         select(ModelFinding)
-        .where(ModelFinding.model_id == model_id)
-        .order_by(ModelFinding.id)
+        .where(
+            ModelFinding.model_id
+            == model_id
+        )
+        .order_by(
+            ModelFinding.id
+        )
     )
 
     return db.scalars(statement).all()
+
 
 @app.patch(
     "/findings/{finding_id}/resolve",
@@ -313,8 +456,14 @@ def resolve_finding(
     finding_id: int,
     request: FindingResolveRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ) -> ModelFinding:
-    finding = db.get(ModelFinding, finding_id)
+    finding = db.get(
+        ModelFinding,
+        finding_id,
+    )
 
     if finding is None:
         raise HTTPException(
@@ -322,35 +471,64 @@ def resolve_finding(
             detail="Finding not found",
         )
 
+    model = db.get(
+        ModelRecord,
+        finding.model_id,
+    )
+
+    if model is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Model not found",
+        )
+
+    ensure_model_owner_or_admin(
+        model,
+        current_user,
+    )
+
     if finding.status == "resolved":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Finding is already resolved",
+            detail=(
+                "Finding is already resolved"
+            ),
         )
 
     finding.status = "resolved"
-    finding.resolution_notes = request.resolution_notes
+    finding.resolution_notes = (
+        request.resolution_notes
+    )
 
     add_audit_event(
         db,
         finding.model_id,
         "finding_resolved",
-        f"Finding '{finding.title}' was resolved.",
+        (
+            f"Finding '{finding.title}' "
+            f"was resolved."
+        ),
     )
+
     db.commit()
     db.refresh(finding)
 
     return finding
 
+
 @app.get(
     "/models/{model_id}/audit",
     response_model=list[AuditEventRead],
+    dependencies=[Depends(get_current_user)],
 )
 def list_audit_events(
     model_id: int,
     db: Session = Depends(get_db),
 ):
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
@@ -360,11 +538,18 @@ def list_audit_events(
 
     statement = (
         select(AuditEvent)
-        .where(AuditEvent.model_id == model_id)
-        .order_by(AuditEvent.created_at, AuditEvent.id)
+        .where(
+            AuditEvent.model_id
+            == model_id
+        )
+        .order_by(
+            AuditEvent.created_at,
+            AuditEvent.id,
+        )
     )
 
     return db.scalars(statement).all()
+
 
 @app.post(
     "/models/{model_id}/monitoring",
@@ -375,8 +560,14 @@ def create_monitoring_record(
     model_id: int,
     monitoring: MonitoringCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ) -> MonitoringRecord:
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
@@ -384,10 +575,21 @@ def create_monitoring_record(
             detail="Model not found",
         )
 
-    if monitoring.critical_threshold <= monitoring.warning_threshold:
+    ensure_model_owner_or_admin(
+        model,
+        current_user,
+    )
+
+    if (
+        monitoring.critical_threshold
+        <= monitoring.warning_threshold
+    ):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Critical threshold must be greater than warning threshold",
+            detail=(
+                "Critical threshold must be "
+                "greater than warning threshold"
+            ),
         )
 
     degradation = calculate_degradation(
@@ -396,10 +598,12 @@ def create_monitoring_record(
         monitoring.direction,
     )
 
-    monitoring_status = determine_monitoring_status(
-        degradation,
-        monitoring.warning_threshold,
-        monitoring.critical_threshold,
+    monitoring_status = (
+        determine_monitoring_status(
+            degradation,
+            monitoring.warning_threshold,
+            monitoring.critical_threshold,
+        )
     )
 
     record = MonitoringRecord(
@@ -418,7 +622,11 @@ def create_monitoring_record(
         db,
         model_id,
         "monitoring_recorded",
-        f"{monitoring.metric_name} monitoring status recorded as {monitoring_status}.",
+        (
+            f"{monitoring.metric_name} monitoring "
+            f"status recorded as "
+            f"{monitoring_status}."
+        ),
     )
 
     db.commit()
@@ -426,15 +634,20 @@ def create_monitoring_record(
 
     return record
 
+
 @app.get(
     "/models/{model_id}/monitoring",
     response_model=list[MonitoringRead],
+    dependencies=[Depends(get_current_user)],
 )
 def list_monitoring_records(
     model_id: int,
     db: Session = Depends(get_db),
 ):
-    model = db.get(ModelRecord, model_id)
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
 
     if model is None:
         raise HTTPException(
@@ -444,8 +657,14 @@ def list_monitoring_records(
 
     statement = (
         select(MonitoringRecord)
-        .where(MonitoringRecord.model_id == model_id)
-        .order_by(MonitoringRecord.created_at, MonitoringRecord.id)
+        .where(
+            MonitoringRecord.model_id
+            == model_id
+        )
+        .order_by(
+            MonitoringRecord.created_at,
+            MonitoringRecord.id,
+        )
     )
 
     return db.scalars(statement).all()

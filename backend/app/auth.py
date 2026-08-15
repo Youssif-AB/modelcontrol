@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.permissions import require_roles
 from app.schemas import (
     Token,
     UserCreate,
@@ -67,3 +68,47 @@ def get_me(
     ),
 ) -> User:
     return current_user
+
+
+@router.post(
+    "/auth/users",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_user(
+    user_data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        require_roles("admin"),
+    ),
+) -> User:
+    email = str(
+        user_data.email,
+    ).strip().lower()
+
+    existing = db.scalar(
+        select(User).where(
+            User.email == email,
+        )
+    )
+
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A user with this email already exists",
+        )
+
+    user = User(
+        email=email,
+        full_name=user_data.full_name.strip(),
+        password_hash=hash_password(
+            user_data.password,
+        ),
+        role=user_data.role.value,
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return user
