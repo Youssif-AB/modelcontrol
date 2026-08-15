@@ -3,9 +3,20 @@ import {
   Routes,
 } from "react-router";
 
-import Dashboard from "./pages/Dashboard";
-import ModelDetail from "./pages/ModelDetail";
-import RegisterModel from "./pages/RegisterModel";
+import ProtectedRoute
+  from "./auth/ProtectedRoute";
+
+import Dashboard
+  from "./pages/Dashboard";
+
+import Login
+  from "./pages/Login";
+
+import ModelDetail
+  from "./pages/ModelDetail";
+
+import RegisterModel
+  from "./pages/RegisterModel";
 
 import "./App.css";
 
@@ -15,22 +26,40 @@ function App() {
     <main className="app">
       <Routes>
         <Route
-          path="/"
-          element={<Dashboard />}
+          path="/login"
+          element={<Login />}
         />
 
         <Route
-          path="/models/new"
-          element={<RegisterModel />}
-        />
+          element={
+            <ProtectedRoute />
+          }
+        >
+          <Route
+            path="/"
+            element={
+              <Dashboard />
+            }
+          />
 
-        <Route
-          path="/models/:modelId"
-          element={<ModelDetail />}
-        />
+          <Route
+            path="/models/new"
+            element={
+              <RegisterModel />
+            }
+          />
+
+          <Route
+            path="/models/:modelId"
+            element={
+              <ModelDetail />
+            }
+          />
+        </Route>
       </Routes>
     </main>
   );
 }
+
 
 export default App;

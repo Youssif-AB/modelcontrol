@@ -7,12 +7,20 @@ import { Link } from "react-router";
 
 import { fetchModels } from "../api";
 import type { ModelRecord } from "../types";
+import { useAuth } from "../auth/AuthContext";
 
 
 function Dashboard() {
+
+  const {
+    user,
+    logout,
+  } = useAuth();
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  
 
   async function loadModels() {
     try {
@@ -66,6 +74,19 @@ function Dashboard() {
         </div>
 
         <div className="header-actions">
+          <div className="current-user">
+            <strong>
+              {user?.full_name}
+            </strong>
+
+            <span>
+              {user?.role.replace(
+                "_",
+                " ",
+              )}
+            </span>
+          </div>
+
           <button
             className="secondary-button"
             onClick={loadModels}
@@ -73,12 +94,22 @@ function Dashboard() {
             Refresh
           </button>
 
-          <Link
-            className="button-link"
-            to="/models/new"
+          {(user?.role === "admin" ||
+            user?.role === "model_owner") && (
+            <Link
+              className="button-link"
+              to="/models/new"
+            >
+              Register Model
+            </Link>
+          )}
+
+          <button
+            className="secondary-button"
+            onClick={logout}
           >
-            Register Model
-          </Link>
+            Sign Out
+          </button>
         </div>
       </header>
 

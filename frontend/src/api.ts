@@ -9,10 +9,37 @@ import type {
   ModelVersionCreate,
   MonitoringCreate,
   MonitoringRecord,
+  TokenResponse,
+  UserRecord,
 } from "./types";
 
+
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_BASE_URL ??
+  "http://127.0.0.1:8000";
+
+const TOKEN_KEY =
+  "modelcontrol_access_token";
+
+
+export function getAccessToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+
+export function setAccessToken(
+  token: string,
+): void {
+  sessionStorage.setItem(
+    TOKEN_KEY,
+    token,
+  );
+}
+
+
+export function clearAccessToken(): void {
+  sessionStorage.removeItem(TOKEN_KEY);
+}
 
 
 async function handleResponse<T>(
@@ -38,46 +65,138 @@ async function handleResponse<T>(
 }
 
 
-export async function fetchModels(): Promise<ModelRecord[]> {
-  const response = await fetch(`${API_BASE_URL}/models`);
+async function authenticatedFetch(
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const headers =
+    new Headers(options.headers);
 
-  return handleResponse<ModelRecord[]>(response);
+  const token = getAccessToken();
+
+  if (token) {
+    headers.set(
+      "Authorization",
+      `Bearer ${token}`,
+    );
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}${path}`,
+    {
+      ...options,
+      headers,
+    },
+  );
+
+  if (response.status === 401) {
+    clearAccessToken();
+  }
+
+  return response;
+}
+
+
+export async function loginUser(
+  email: string,
+  password: string,
+): Promise<TokenResponse> {
+  const body = new URLSearchParams();
+
+  body.set("username", email);
+  body.set("password", password);
+
+  const response = await fetch(
+    `${API_BASE_URL}/auth/login`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/x-www-form-urlencoded",
+      },
+      body,
+    },
+  );
+
+  return handleResponse<TokenResponse>(
+    response,
+  );
+}
+
+
+export async function fetchCurrentUser():
+Promise<UserRecord> {
+  const response =
+    await authenticatedFetch(
+      "/auth/me",
+    );
+
+  return handleResponse<UserRecord>(
+    response,
+  );
+}
+
+
+export async function fetchModels():
+Promise<ModelRecord[]> {
+  const response =
+    await authenticatedFetch(
+      "/models",
+    );
+
+  return handleResponse<ModelRecord[]>(
+    response,
+  );
 }
 
 
 export async function fetchModel(
   modelId: number,
 ): Promise<ModelRecord> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}`,
-  );
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}`,
+    );
 
-  return handleResponse<ModelRecord>(response);
+  return handleResponse<ModelRecord>(
+    response,
+  );
 }
 
 
 export async function createModel(
   model: ModelCreate,
 ): Promise<ModelRecord> {
-  const response = await fetch(`${API_BASE_URL}/models`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(model),
-  });
+  const response =
+    await authenticatedFetch(
+      "/models",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify(model),
+      },
+    );
 
-  return handleResponse<ModelRecord>(response);
+  return handleResponse<ModelRecord>(
+    response,
+  );
 }
+
 
 export async function fetchVersions(
   modelId: number,
 ): Promise<ModelVersion[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/versions`,
-  );
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/versions`,
+    );
 
-  return handleResponse<ModelVersion[]>(response);
+  return handleResponse<ModelVersion[]>(
+    response,
+  );
 }
 
 
@@ -85,18 +204,22 @@ export async function createVersion(
   modelId: number,
   version: ModelVersionCreate,
 ): Promise<ModelVersion> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/versions`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/versions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify(version),
       },
-      body: JSON.stringify(version),
-    },
-  );
+    );
 
-  return handleResponse<ModelVersion>(response);
+  return handleResponse<ModelVersion>(
+    response,
+  );
 }
 
 
@@ -104,28 +227,38 @@ export async function updateLifecycle(
   modelId: number,
   action: LifecycleAction,
 ): Promise<ModelRecord> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/lifecycle`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/lifecycle`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          action,
+        }),
       },
-      body: JSON.stringify({ action }),
-    },
-  );
+    );
 
-  return handleResponse<ModelRecord>(response);
+  return handleResponse<ModelRecord>(
+    response,
+  );
 }
+
 
 export async function fetchFindings(
   modelId: number,
 ): Promise<Finding[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/findings`,
-  );
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/findings`,
+    );
 
-  return handleResponse<Finding[]>(response);
+  return handleResponse<Finding[]>(
+    response,
+  );
 }
 
 
@@ -133,18 +266,22 @@ export async function createFinding(
   modelId: number,
   finding: FindingCreate,
 ): Promise<Finding> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/findings`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/findings`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify(finding),
       },
-      body: JSON.stringify(finding),
-    },
-  );
+    );
 
-  return handleResponse<Finding>(response);
+  return handleResponse<Finding>(
+    response,
+  );
 }
 
 
@@ -152,41 +289,53 @@ export async function resolveFinding(
   findingId: number,
   resolutionNotes: string,
 ): Promise<Finding> {
-  const response = await fetch(
-    `${API_BASE_URL}/findings/${findingId}/resolve`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
+  const response =
+    await authenticatedFetch(
+      `/findings/${findingId}/resolve`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          resolution_notes:
+            resolutionNotes,
+        }),
       },
-      body: JSON.stringify({
-        resolution_notes: resolutionNotes,
-      }),
-    },
-  );
+    );
 
-  return handleResponse<Finding>(response);
+  return handleResponse<Finding>(
+    response,
+  );
 }
 
 
 export async function fetchAudit(
   modelId: number,
 ): Promise<AuditEvent[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/audit`,
-  );
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/audit`,
+    );
 
-  return handleResponse<AuditEvent[]>(response);
+  return handleResponse<AuditEvent[]>(
+    response,
+  );
 }
+
 
 export async function fetchMonitoring(
   modelId: number,
 ): Promise<MonitoringRecord[]> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/monitoring`,
-  );
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/monitoring`,
+    );
 
-  return handleResponse<MonitoringRecord[]>(response);
+  return handleResponse<
+    MonitoringRecord[]
+  >(response);
 }
 
 
@@ -194,16 +343,22 @@ export async function createMonitoringRecord(
   modelId: number,
   monitoring: MonitoringCreate,
 ): Promise<MonitoringRecord> {
-  const response = await fetch(
-    `${API_BASE_URL}/models/${modelId}/monitoring`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/monitoring`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify(
+          monitoring,
+        ),
       },
-      body: JSON.stringify(monitoring),
-    },
-  );
+    );
 
-  return handleResponse<MonitoringRecord>(response);
+  return handleResponse<MonitoringRecord>(
+    response,
+  );
 }

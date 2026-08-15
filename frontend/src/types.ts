@@ -109,3 +109,21 @@ export interface MonitoringCreate {
   warning_threshold: number;
   critical_threshold: number;
 }
+
+export type UserRole =
+  | "admin"
+  | "model_owner"
+  | "reviewer";
+
+export interface UserRecord {
+  id: number;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  is_active: boolean;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
