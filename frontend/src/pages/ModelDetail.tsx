@@ -1,6 +1,7 @@
 import {
   useEffect,
   useState,
+  type FormEvent,
 } from "react";
 
 import {
@@ -8,8 +9,18 @@ import {
   useParams,
 } from "react-router";
 
-import { fetchModel } from "../api";
-import type { ModelRecord } from "../types";
+import {
+  createVersion,
+  fetchModel,
+  fetchVersions,
+  updateLifecycle,
+} from "../api";
+
+import type {
+  LifecycleAction,
+  ModelRecord,
+  ModelVersion,
+} from "../types";
 
 
 function ModelDetail() {
@@ -18,47 +29,220 @@ function ModelDetail() {
   const [model, setModel] =
     useState<ModelRecord | null>(null);
 
+  const [versions, setVersions] =
+    useState<ModelVersion[]>([]);
+
   const [loading, setLoading] =
     useState(true);
 
   const [error, setError] =
     useState<string | null>(null);
 
+  const [actionError, setActionError] =
+    useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadModel() {
-      const parsedId = Number(modelId);
+  const [versionNumber, setVersionNumber] =
+    useState(1);
 
-      if (
-        !modelId ||
-        !Number.isInteger(parsedId) ||
-        parsedId <= 0
-      ) {
-        setError("Invalid model ID.");
-        setLoading(false);
-        return;
-      }
+  const [versionDescription, setVersionDescription] =
+    useState("");
 
-      try {
-        setLoading(true);
-        setError(null);
+  const [submittingVersion, setSubmittingVersion] =
+    useState(false);
 
-        const data = await fetchModel(parsedId);
+  const [updatingLifecycle, setUpdatingLifecycle] =
+    useState(false);
 
-        setModel(data);
-      } catch (err) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError("Unable to load model.");
-        }
-      } finally {
-        setLoading(false);
-      }
+
+  const parsedModelId = Number(modelId);
+
+
+  async function loadData() {
+    if (
+      !modelId ||
+      !Number.isInteger(parsedModelId) ||
+      parsedModelId <= 0
+    ) {
+      setError("Invalid model ID.");
+      setLoading(false);
+      return;
     }
 
-    loadModel();
+    try {
+      setLoading(true);
+      setError(null);
+
+      const [
+        modelData,
+        versionData,
+      ] = await Promise.all([
+        fetchModel(parsedModelId),
+        fetchVersions(parsedModelId),
+      ]);
+
+      setModel(modelData);
+      setVersions(versionData);
+
+      const highestVersion = versionData.reduce(
+        (highest, version) =>
+          Math.max(
+            highest,
+            version.version_number,
+          ),
+        0,
+      );
+
+      setVersionNumber(highestVersion + 1);
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Unable to load model.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+
+  useEffect(() => {
+    loadData();
   }, [modelId]);
+
+
+  async function handleLifecycleAction(
+    action: LifecycleAction,
+  ) {
+    try {
+      setUpdatingLifecycle(true);
+      setActionError(null);
+
+      const updated = await updateLifecycle(
+        parsedModelId,
+        action,
+      );
+
+      setModel(updated);
+    } catch (err) {
+      if (err instanceof Error) {
+        setActionError(err.message);
+      } else {
+        setActionError(
+          "Unable to update lifecycle.",
+        );
+      }
+    } finally {
+      setUpdatingLifecycle(false);
+    }
+  }
+
+
+  async function handleVersionSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    try {
+      setSubmittingVersion(true);
+      setActionError(null);
+
+      const created = await createVersion(
+        parsedModelId,
+        {
+          version_number: versionNumber,
+          description: versionDescription,
+        },
+      );
+
+      setVersions((current) => [
+        ...current,
+        created,
+      ]);
+
+      setVersionNumber(
+        created.version_number + 1,
+      );
+
+      setVersionDescription("");
+    } catch (err) {
+      if (err instanceof Error) {
+        setActionError(err.message);
+      } else {
+        setActionError(
+          "Unable to create version.",
+        );
+      }
+    } finally {
+      setSubmittingVersion(false);
+    }
+  }
+
+
+  function renderLifecycleActions() {
+    if (!model) {
+      return null;
+    }
+
+    switch (model.lifecycle_status) {
+      case "draft":
+        return (
+          <button
+            disabled={updatingLifecycle}
+            onClick={() =>
+              handleLifecycleAction(
+                "submit_for_review",
+              )
+            }
+          >
+            Submit for Review
+          </button>
+        );
+
+      case "under_review":
+        return (
+          <>
+            <button
+              disabled={updatingLifecycle}
+              onClick={() =>
+                handleLifecycleAction("approve")
+              }
+            >
+              Approve
+            </button>
+
+            <button
+              className="secondary-button"
+              disabled={updatingLifecycle}
+              onClick={() =>
+                handleLifecycleAction("reject")
+              }
+            >
+              Reject
+            </button>
+          </>
+        );
+
+      case "approved":
+        return (
+          <button
+            className="secondary-button"
+            disabled={updatingLifecycle}
+            onClick={() =>
+              handleLifecycleAction("retire")
+            }
+          >
+            Retire Model
+          </button>
+        );
+
+      case "retired":
+        return (
+          <p className="muted-text">
+            This model has been retired.
+          </p>
+        );
+    }
+  }
 
 
   return (
@@ -145,60 +329,145 @@ function ModelDetail() {
             </div>
           </section>
 
-          <section className="governance-section">
+          {actionError && (
+            <p className="error">
+              {actionError}
+            </p>
+          )}
+
+          <section className="management-grid">
+            <div className="management-card">
+              <div className="section-heading">
+                <div>
+                  <h2>Lifecycle</h2>
+                  <p>
+                    Manage the model's governance
+                    status.
+                  </p>
+                </div>
+              </div>
+
+              <div className="card-content">
+                <div className="current-status">
+                  <span>Current Status</span>
+
+                  <strong>
+                    {model.lifecycle_status.replace(
+                      "_",
+                      " ",
+                    )}
+                  </strong>
+                </div>
+
+                <div className="lifecycle-actions">
+                  {renderLifecycleActions()}
+                </div>
+              </div>
+            </div>
+
+            <div className="management-card">
+              <div className="section-heading">
+                <div>
+                  <h2>Add Version</h2>
+                  <p>
+                    Register a new version of this
+                    model.
+                  </p>
+                </div>
+              </div>
+
+              <form
+                className="version-form"
+                onSubmit={handleVersionSubmit}
+              >
+                <label>
+                  Version Number
+
+                  <input
+                    type="number"
+                    min="1"
+                    required
+                    value={versionNumber}
+                    onChange={(event) =>
+                      setVersionNumber(
+                        Number(event.target.value),
+                      )
+                    }
+                  />
+                </label>
+
+                <label>
+                  Description
+
+                  <textarea
+                    required
+                    minLength={5}
+                    value={versionDescription}
+                    onChange={(event) =>
+                      setVersionDescription(
+                        event.target.value,
+                      )
+                    }
+                    placeholder="Describe the changes in this version."
+                  />
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={submittingVersion}
+                >
+                  {submittingVersion
+                    ? "Adding..."
+                    : "Add Version"}
+                </button>
+              </form>
+            </div>
+          </section>
+
+          <section className="inventory version-section">
             <div className="section-heading">
               <div>
-                <h2>Governance</h2>
+                <h2>Model Versions</h2>
 
                 <p>
-                  Versions, lifecycle reviews,
-                  findings, monitoring, and audit
-                  history will be managed here.
+                  Version history registered for
+                  this model.
                 </p>
               </div>
             </div>
 
-            <div className="governance-grid">
-              <div className="feature-card">
-                <h3>Versions</h3>
-                <p>
-                  Track registered versions of this
-                  model.
-                </p>
-              </div>
+            {versions.length === 0 ? (
+              <p className="empty-state">
+                No versions registered yet.
+              </p>
+            ) : (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Version</th>
+                      <th>Description</th>
+                    </tr>
+                  </thead>
 
-              <div className="feature-card">
-                <h3>Lifecycle</h3>
-                <p>
-                  Submit, approve, reject, and
-                  retire models.
-                </p>
-              </div>
+                  <tbody>
+                    {versions.map((version) => (
+                      <tr key={version.id}>
+                        <td>
+                          <strong>
+                            v{version.version_number}
+                          </strong>
+                        </td>
 
-              <div className="feature-card">
-                <h3>Findings</h3>
-                <p>
-                  Track governance and validation
-                  issues.
-                </p>
+                        <td>
+                          {version.description}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
-              <div className="feature-card">
-                <h3>Monitoring</h3>
-                <p>
-                  Review model performance and
-                  degradation.
-                </p>
-              </div>
-
-              <div className="feature-card">
-                <h3>Audit Trail</h3>
-                <p>
-                  Review important historical model
-                  events.
-                </p>
-              </div>
-            </div>
+            )}
           </section>
         </>
       )}

@@ -27,3 +27,21 @@ export interface ModelCreate {
   model_type: ModelType;
   risk_tier: RiskTier;
 }
+
+export interface ModelVersion {
+  id: number;
+  model_id: number;
+  version_number: number;
+  description: string;
+}
+
+export interface ModelVersionCreate {
+  version_number: number;
+  description: string;
+}
+
+export type LifecycleAction =
+  | "submit_for_review"
+  | "approve"
+  | "reject"
+  | "retire";

@@ -1,6 +1,9 @@
 import type {
+  LifecycleAction,
   ModelCreate,
   ModelRecord,
+  ModelVersion,
+  ModelVersionCreate,
 } from "./types";
 
 const API_BASE_URL =
@@ -58,6 +61,54 @@ export async function createModel(
     },
     body: JSON.stringify(model),
   });
+
+  return handleResponse<ModelRecord>(response);
+}
+
+export async function fetchVersions(
+  modelId: number,
+): Promise<ModelVersion[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/versions`,
+  );
+
+  return handleResponse<ModelVersion[]>(response);
+}
+
+
+export async function createVersion(
+  modelId: number,
+  version: ModelVersionCreate,
+): Promise<ModelVersion> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/versions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(version),
+    },
+  );
+
+  return handleResponse<ModelVersion>(response);
+}
+
+
+export async function updateLifecycle(
+  modelId: number,
+  action: LifecycleAction,
+): Promise<ModelRecord> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/lifecycle`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action }),
+    },
+  );
 
   return handleResponse<ModelRecord>(response);
 }
