@@ -45,3 +45,37 @@ export type LifecycleAction =
   | "approve"
   | "reject"
   | "retire";
+
+export type FindingSeverity =
+  | "low"
+  | "medium"
+  | "high"
+  | "critical";
+
+export type FindingStatus =
+  | "open"
+  | "resolved";
+
+export interface Finding {
+  id: number;
+  model_id: number;
+  title: string;
+  description: string;
+  severity: FindingSeverity;
+  status: FindingStatus;
+  resolution_notes: string | null;
+}
+
+export interface FindingCreate {
+  title: string;
+  description: string;
+  severity: FindingSeverity;
+}
+
+export interface AuditEvent {
+  id: number;
+  model_id: number;
+  event_type: string;
+  description: string;
+  created_at: string;
+}

@@ -16,6 +16,9 @@ import {
   updateLifecycle,
 } from "../api";
 
+import AuditPanel from "../components/AuditPanel";
+import FindingsPanel from "../components/FindingsPanel";
+
 import type {
   LifecycleAction,
   ModelRecord,
@@ -25,6 +28,8 @@ import type {
 
 function ModelDetail() {
   const { modelId } = useParams();
+
+  const parsedModelId = Number(modelId);
 
   const [model, setModel] =
     useState<ModelRecord | null>(null);
@@ -53,61 +58,72 @@ function ModelDetail() {
   const [updatingLifecycle, setUpdatingLifecycle] =
     useState(false);
 
+  const [auditRefreshToken, setAuditRefreshToken] =
+    useState(0);
 
-  const parsedModelId = Number(modelId);
 
-
-  async function loadData() {
-    if (
-      !modelId ||
-      !Number.isInteger(parsedModelId) ||
-      parsedModelId <= 0
-    ) {
-      setError("Invalid model ID.");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const [
-        modelData,
-        versionData,
-      ] = await Promise.all([
-        fetchModel(parsedModelId),
-        fetchVersions(parsedModelId),
-      ]);
-
-      setModel(modelData);
-      setVersions(versionData);
-
-      const highestVersion = versionData.reduce(
-        (highest, version) =>
-          Math.max(
-            highest,
-            version.version_number,
-          ),
-        0,
-      );
-
-      setVersionNumber(highestVersion + 1);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Unable to load model.");
-      }
-    } finally {
-      setLoading(false);
-    }
+  function refreshAudit() {
+    setAuditRefreshToken(
+      (current) => current + 1,
+    );
   }
 
 
   useEffect(() => {
+    async function loadData() {
+      if (
+        !modelId ||
+        !Number.isInteger(parsedModelId) ||
+        parsedModelId <= 0
+      ) {
+        setError("Invalid model ID.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const [
+          modelData,
+          versionData,
+        ] = await Promise.all([
+          fetchModel(parsedModelId),
+          fetchVersions(parsedModelId),
+        ]);
+
+        setModel(modelData);
+        setVersions(versionData);
+
+        const highestVersion =
+          versionData.reduce(
+            (highest, version) =>
+              Math.max(
+                highest,
+                version.version_number,
+              ),
+            0,
+          );
+
+        setVersionNumber(
+          highestVersion + 1,
+        );
+      } catch (err) {
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError(
+            "Unable to load model.",
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
     loadData();
-  }, [modelId]);
+  }, [modelId, parsedModelId]);
 
 
   async function handleLifecycleAction(
@@ -117,12 +133,15 @@ function ModelDetail() {
       setUpdatingLifecycle(true);
       setActionError(null);
 
-      const updated = await updateLifecycle(
-        parsedModelId,
-        action,
-      );
+      const updated =
+        await updateLifecycle(
+          parsedModelId,
+          action,
+        );
 
       setModel(updated);
+
+      refreshAudit();
     } catch (err) {
       if (err instanceof Error) {
         setActionError(err.message);
@@ -146,13 +165,17 @@ function ModelDetail() {
       setSubmittingVersion(true);
       setActionError(null);
 
-      const created = await createVersion(
-        parsedModelId,
-        {
-          version_number: versionNumber,
-          description: versionDescription,
-        },
-      );
+      const created =
+        await createVersion(
+          parsedModelId,
+          {
+            version_number:
+              versionNumber,
+
+            description:
+              versionDescription,
+          },
+        );
 
       setVersions((current) => [
         ...current,
@@ -164,6 +187,8 @@ function ModelDetail() {
       );
 
       setVersionDescription("");
+
+      refreshAudit();
     } catch (err) {
       if (err instanceof Error) {
         setActionError(err.message);
@@ -204,7 +229,9 @@ function ModelDetail() {
             <button
               disabled={updatingLifecycle}
               onClick={() =>
-                handleLifecycleAction("approve")
+                handleLifecycleAction(
+                  "approve",
+                )
               }
             >
               Approve
@@ -214,7 +241,9 @@ function ModelDetail() {
               className="secondary-button"
               disabled={updatingLifecycle}
               onClick={() =>
-                handleLifecycleAction("reject")
+                handleLifecycleAction(
+                  "reject",
+                )
               }
             >
               Reject
@@ -228,7 +257,9 @@ function ModelDetail() {
             className="secondary-button"
             disabled={updatingLifecycle}
             onClick={() =>
-              handleLifecycleAction("retire")
+              handleLifecycleAction(
+                "retire",
+              )
             }
           >
             Retire Model
@@ -265,214 +296,293 @@ function ModelDetail() {
         </p>
       )}
 
-      {!loading && !error && model && (
-        <>
-          <header className="detail-header">
-            <div>
-              <p className="eyebrow">
-                MODEL #{model.id}
+      {!loading &&
+        !error &&
+        model && (
+          <>
+            <header className="detail-header">
+              <div>
+                <p className="eyebrow">
+                  MODEL #{model.id}
+                </p>
+
+                <h1>
+                  {model.name}
+                </h1>
+
+                <p className="subtitle">
+                  {model.purpose}
+                </p>
+              </div>
+
+              <div className="detail-badges">
+                <span
+                  className={`badge ${model.risk_tier}`}
+                >
+                  {model.risk_tier} risk
+                </span>
+
+                <span className="badge">
+                  {model.lifecycle_status.replace(
+                    "_",
+                    " ",
+                  )}
+                </span>
+              </div>
+            </header>
+
+            <section className="detail-grid">
+              <div className="detail-card">
+                <span>
+                  Business Area
+                </span>
+
+                <strong>
+                  {model.business_area}
+                </strong>
+              </div>
+
+              <div className="detail-card">
+                <span>
+                  Model Type
+                </span>
+
+                <strong>
+                  {model.model_type}
+                </strong>
+              </div>
+
+              <div className="detail-card">
+                <span>
+                  Owner
+                </span>
+
+                <strong>
+                  {model.owner_email}
+                </strong>
+              </div>
+
+              <div className="detail-card">
+                <span>
+                  Lifecycle
+                </span>
+
+                <strong>
+                  {model.lifecycle_status.replace(
+                    "_",
+                    " ",
+                  )}
+                </strong>
+              </div>
+            </section>
+
+            {actionError && (
+              <p className="error">
+                {actionError}
               </p>
+            )}
 
-              <h1>{model.name}</h1>
+            <section className="management-grid">
+              <div className="management-card">
+                <div className="section-heading">
+                  <div>
+                    <h2>
+                      Lifecycle
+                    </h2>
 
-              <p className="subtitle">
-                {model.purpose}
-              </p>
-            </div>
+                    <p>
+                      Manage the model's
+                      governance status.
+                    </p>
+                  </div>
+                </div>
 
-            <div className="detail-badges">
-              <span
-                className={`badge ${model.risk_tier}`}
-              >
-                {model.risk_tier} risk
-              </span>
+                <div className="card-content">
+                  <div className="current-status">
+                    <span>
+                      Current Status
+                    </span>
 
-              <span className="badge">
-                {model.lifecycle_status.replace(
-                  "_",
-                  " ",
-                )}
-              </span>
-            </div>
-          </header>
+                    <strong>
+                      {model.lifecycle_status.replace(
+                        "_",
+                        " ",
+                      )}
+                    </strong>
+                  </div>
 
-          <section className="detail-grid">
-            <div className="detail-card">
-              <span>Business Area</span>
-              <strong>
-                {model.business_area}
-              </strong>
-            </div>
-
-            <div className="detail-card">
-              <span>Model Type</span>
-              <strong>
-                {model.model_type}
-              </strong>
-            </div>
-
-            <div className="detail-card">
-              <span>Owner</span>
-              <strong>
-                {model.owner_email}
-              </strong>
-            </div>
-
-            <div className="detail-card">
-              <span>Lifecycle</span>
-              <strong>
-                {model.lifecycle_status.replace(
-                  "_",
-                  " ",
-                )}
-              </strong>
-            </div>
-          </section>
-
-          {actionError && (
-            <p className="error">
-              {actionError}
-            </p>
-          )}
-
-          <section className="management-grid">
-            <div className="management-card">
-              <div className="section-heading">
-                <div>
-                  <h2>Lifecycle</h2>
-                  <p>
-                    Manage the model's governance
-                    status.
-                  </p>
+                  <div className="lifecycle-actions">
+                    {renderLifecycleActions()}
+                  </div>
                 </div>
               </div>
 
-              <div className="card-content">
-                <div className="current-status">
-                  <span>Current Status</span>
+              <div className="management-card">
+                <div className="section-heading">
+                  <div>
+                    <h2>
+                      Add Version
+                    </h2>
 
-                  <strong>
-                    {model.lifecycle_status.replace(
-                      "_",
-                      " ",
-                    )}
-                  </strong>
+                    <p>
+                      Register a new
+                      version of this model.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="lifecycle-actions">
-                  {renderLifecycleActions()}
-                </div>
+                <form
+                  className="version-form"
+                  onSubmit={
+                    handleVersionSubmit
+                  }
+                >
+                  <label>
+                    Version Number
+
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={
+                        versionNumber
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setVersionNumber(
+                          Number(
+                            event.target
+                              .value,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Description
+
+                    <textarea
+                      required
+                      minLength={5}
+                      value={
+                        versionDescription
+                      }
+                      onChange={(
+                        event,
+                      ) =>
+                        setVersionDescription(
+                          event.target
+                            .value,
+                        )
+                      }
+                      placeholder="Describe the changes in this version."
+                    />
+                  </label>
+
+                  <button
+                    type="submit"
+                    disabled={
+                      submittingVersion
+                    }
+                  >
+                    {submittingVersion
+                      ? "Adding..."
+                      : "Add Version"}
+                  </button>
+                </form>
               </div>
-            </div>
+            </section>
 
-            <div className="management-card">
+            <section className="inventory version-section">
               <div className="section-heading">
                 <div>
-                  <h2>Add Version</h2>
+                  <h2>
+                    Model Versions
+                  </h2>
+
                   <p>
-                    Register a new version of this
+                    Version history
+                    registered for this
                     model.
                   </p>
                 </div>
               </div>
 
-              <form
-                className="version-form"
-                onSubmit={handleVersionSubmit}
-              >
-                <label>
-                  Version Number
-
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={versionNumber}
-                    onChange={(event) =>
-                      setVersionNumber(
-                        Number(event.target.value),
-                      )
-                    }
-                  />
-                </label>
-
-                <label>
-                  Description
-
-                  <textarea
-                    required
-                    minLength={5}
-                    value={versionDescription}
-                    onChange={(event) =>
-                      setVersionDescription(
-                        event.target.value,
-                      )
-                    }
-                    placeholder="Describe the changes in this version."
-                  />
-                </label>
-
-                <button
-                  type="submit"
-                  disabled={submittingVersion}
-                >
-                  {submittingVersion
-                    ? "Adding..."
-                    : "Add Version"}
-                </button>
-              </form>
-            </div>
-          </section>
-
-          <section className="inventory version-section">
-            <div className="section-heading">
-              <div>
-                <h2>Model Versions</h2>
-
-                <p>
-                  Version history registered for
-                  this model.
+              {versions.length === 0 ? (
+                <p className="empty-state">
+                  No versions registered
+                  yet.
                 </p>
-              </div>
-            </div>
+              ) : (
+                <div className="table-wrapper">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>
+                          Version
+                        </th>
 
-            {versions.length === 0 ? (
-              <p className="empty-state">
-                No versions registered yet.
-              </p>
-            ) : (
-              <div className="table-wrapper">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Version</th>
-                      <th>Description</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {versions.map((version) => (
-                      <tr key={version.id}>
-                        <td>
-                          <strong>
-                            v{version.version_number}
-                          </strong>
-                        </td>
-
-                        <td>
-                          {version.description}
-                        </td>
+                        <th>
+                          Description
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </>
-      )}
+                    </thead>
+
+                    <tbody>
+                      {versions.map(
+                        (version) => (
+                          <tr
+                            key={
+                              version.id
+                            }
+                          >
+                            <td>
+                              <strong>
+                                v
+                                {
+                                  version.version_number
+                                }
+                              </strong>
+                            </td>
+
+                            <td>
+                              {
+                                version.description
+                              }
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <FindingsPanel
+              modelId={
+                parsedModelId
+              }
+              onChanged={
+                refreshAudit
+              }
+            />
+
+            <AuditPanel
+              modelId={
+                parsedModelId
+              }
+              refreshToken={
+                auditRefreshToken
+              }
+            />
+          </>
+        )}
     </>
   );
 }
+
 
 export default ModelDetail;

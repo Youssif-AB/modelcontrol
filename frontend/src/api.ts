@@ -1,4 +1,7 @@
 import type {
+  AuditEvent,
+  Finding,
+  FindingCreate,
   LifecycleAction,
   ModelCreate,
   ModelRecord,
@@ -111,4 +114,65 @@ export async function updateLifecycle(
   );
 
   return handleResponse<ModelRecord>(response);
+}
+
+export async function fetchFindings(
+  modelId: number,
+): Promise<Finding[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/findings`,
+  );
+
+  return handleResponse<Finding[]>(response);
+}
+
+
+export async function createFinding(
+  modelId: number,
+  finding: FindingCreate,
+): Promise<Finding> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/findings`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(finding),
+    },
+  );
+
+  return handleResponse<Finding>(response);
+}
+
+
+export async function resolveFinding(
+  findingId: number,
+  resolutionNotes: string,
+): Promise<Finding> {
+  const response = await fetch(
+    `${API_BASE_URL}/findings/${findingId}/resolve`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        resolution_notes: resolutionNotes,
+      }),
+    },
+  );
+
+  return handleResponse<Finding>(response);
+}
+
+
+export async function fetchAudit(
+  modelId: number,
+): Promise<AuditEvent[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/models/${modelId}/audit`,
+  );
+
+  return handleResponse<AuditEvent[]>(response);
 }
