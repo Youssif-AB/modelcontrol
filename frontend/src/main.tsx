@@ -12,7 +12,7 @@ import {
 
 import {
   AuthProvider,
-} from "./auth/AuthContext";
+} from "./auth/AuthProvider";
 
 import App from "./App";
 

@@ -1,6 +1,4 @@
 import {
-  createContext,
-  useContext,
   useEffect,
   useState,
   type ReactNode,
@@ -18,24 +16,9 @@ import type {
   UserRecord,
 } from "../types";
 
-
-interface AuthContextValue {
-  user: UserRecord | null;
-  loading: boolean;
-
-  login: (
-    email: string,
-    password: string,
-  ) => Promise<void>;
-
-  logout: () => void;
-}
-
-
-const AuthContext =
-  createContext<
-    AuthContextValue | undefined
-  >(undefined);
+import {
+  AuthContext,
+} from "./auth-context";
 
 
 interface AuthProviderProps {
@@ -50,33 +33,42 @@ export function AuthProvider({
     useState<UserRecord | null>(null);
 
   const [loading, setLoading] =
-    useState(true);
+    useState(
+      () => getAccessToken() !== null,
+    );
 
 
   useEffect(() => {
-    async function restoreSession() {
-      const token =
-        getAccessToken();
+    const token = getAccessToken();
 
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const currentUser =
-          await fetchCurrentUser();
-
-        setUser(currentUser);
-      } catch {
-        clearAccessToken();
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
+    if (!token) {
+      return;
     }
 
-    restoreSession();
+    let cancelled = false;
+
+    fetchCurrentUser()
+      .then((currentUser) => {
+        if (!cancelled) {
+          setUser(currentUser);
+        }
+      })
+      .catch(() => {
+        clearAccessToken();
+
+        if (!cancelled) {
+          setUser(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
 
@@ -101,7 +93,6 @@ export function AuthProvider({
       setUser(currentUser);
     } catch (error) {
       clearAccessToken();
-
       throw error;
     }
   }
@@ -125,18 +116,4 @@ export function AuthProvider({
       {children}
     </AuthContext.Provider>
   );
-}
-
-
-export function useAuth() {
-  const context =
-    useContext(AuthContext);
-
-  if (!context) {
-    throw new Error(
-      "useAuth must be used inside AuthProvider",
-    );
-  }
-
-  return context;
 }

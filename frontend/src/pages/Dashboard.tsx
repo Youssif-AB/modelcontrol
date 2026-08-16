@@ -7,7 +7,9 @@ import { Link } from "react-router";
 
 import { fetchModels } from "../api";
 import type { ModelRecord } from "../types";
-import { useAuth } from "../auth/AuthContext";
+import {
+  useAuth,
+} from "../auth/useAuth";
 
 
 function Dashboard() {
@@ -42,7 +44,37 @@ function Dashboard() {
   }
 
   useEffect(() => {
-    loadModels();
+    let cancelled = false;
+
+    fetchModels()
+      .then((data) => {
+        if (!cancelled) {
+          setModels(data);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError(
+            "Unable to load model inventory.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const highRiskModels = models.filter(

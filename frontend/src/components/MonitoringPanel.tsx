@@ -68,33 +68,39 @@ function MonitoringPanel({
   ] = useState(0.1);
 
 
-  async function loadMonitoring() {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const data =
-        await fetchMonitoring(modelId);
-
-      setRecords(data);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError(
-          "Unable to load monitoring records.",
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-
   useEffect(() => {
-    loadMonitoring();
-  }, [modelId]);
+    let cancelled = false;
 
+    fetchMonitoring(modelId)
+      .then((data) => {
+        if (!cancelled) {
+          setRecords(data);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError(
+            "Unable to load monitoring records.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
 
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,

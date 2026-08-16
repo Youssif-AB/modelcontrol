@@ -3,8 +3,9 @@ import {
   Outlet,
 } from "react-router";
 
-import { useAuth } from "./AuthContext";
-
+import {
+  useAuth,
+} from "./useAuth";
 
 function ProtectedRoute() {
   const {

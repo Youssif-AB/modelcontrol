@@ -60,33 +60,39 @@ function FindingsPanel({
   ] = useState("");
 
 
-  async function loadFindings() {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const data =
-        await fetchFindings(modelId);
-
-      setFindings(data);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError(
-          "Unable to load findings.",
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-
   useEffect(() => {
-    loadFindings();
-  }, [modelId]);
+    let cancelled = false;
 
+    fetchFindings(modelId)
+      .then((data) => {
+        if (!cancelled) {
+          setFindings(data);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError(
+            "Unable to load findings.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [modelId]);
 
   async function handleCreateFinding(
     event: FormEvent<HTMLFormElement>,

@@ -16,7 +16,9 @@ import {
   updateLifecycle,
 } from "../api";
 
-import { useAuth } from "../auth/AuthContext";
+import {
+  useAuth,
+} from "../auth/useAuth";
 
 import AuditPanel from "../components/AuditPanel";
 import FindingsPanel from "../components/FindingsPanel";
