@@ -37,6 +37,8 @@ class ModelRead(BaseModel):
     model_type:ModelType
     risk_tier: RiskTier
     lifecycle_status: LifecycleStatus
+    created_at: datetime
+    updated_at: datetime
 
 class ModelVersionCreate(BaseModel):
     version_number: int = Field(ge=1)
@@ -50,6 +52,7 @@ class ModelVersionRead(BaseModel):
     model_id: int
     version_number: int
     description: str
+    created_at: datetime
 
 class LifecycleAction(str, Enum):
     submit_for_review = "submit_for_review"
@@ -89,6 +92,8 @@ class FindingRead(BaseModel):
     severity: FindingSeverity
     status: FindingStatus
     resolution_notes: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class FindingResolveRequest(BaseModel):
@@ -157,6 +162,7 @@ class UserRead(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    created_at: datetime
 
 
 class Token(BaseModel):

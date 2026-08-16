@@ -439,3 +439,42 @@ def test_governance_actions_create_audit_events(
     assert "version_created" in event_types
     assert "lifecycle_changed" in event_types
     assert "finding_created" in event_types
+
+def test_duplicate_model_version_is_rejected(
+    client,
+    owner_user,
+):
+    owner_token = login(
+        client,
+        "owner@test.com",
+    )
+
+    model = create_model(
+        client,
+        owner_token,
+    )
+
+    payload = {
+        "version_number": 1,
+        "description": "Initial candidate version",
+    }
+
+    first_response = client.post(
+        f"/models/{model['id']}/versions",
+        json=payload,
+        headers=auth_headers(owner_token),
+    )
+
+    assert first_response.status_code == 201
+
+    duplicate_response = client.post(
+        f"/models/{model['id']}/versions",
+        json=payload,
+        headers=auth_headers(owner_token),
+    )
+
+    assert duplicate_response.status_code == 409
+
+    assert duplicate_response.json()["detail"] == (
+        "Version 1 already exists for this model"
+    )

@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
+from sqlalchemy.exc import IntegrityError
 from app.auth import router as auth_router
 from app.database import get_db
 from app.models import (
@@ -235,6 +235,23 @@ def create_model_version(
         current_user,
     )
 
+    existing_version = db.scalar(
+        select(ModelVersion).where(
+            ModelVersion.model_id == model_id,
+            ModelVersion.version_number
+            == version.version_number,
+        )
+    )
+
+    if existing_version is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Version {version.version_number} "
+                "already exists for this model"
+            ),
+        )
+
     record = ModelVersion(
         model_id=model_id,
         version_number=version.version_number,
@@ -250,11 +267,22 @@ def create_model_version(
         f"Version {version.version_number} was added.",
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Version {version.version_number} "
+                "already exists for this model"
+            ),
+        )
+
     db.refresh(record)
 
     return record
-
 
 @app.get(
     "/models/{model_id}/versions",
