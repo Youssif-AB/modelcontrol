@@ -16,6 +16,8 @@ import {
   updateLifecycle,
 } from "../api";
 
+import { useAuth } from "../auth/AuthContext";
+
 import AuditPanel from "../components/AuditPanel";
 import FindingsPanel from "../components/FindingsPanel";
 import MonitoringPanel from "../components/MonitoringPanel";
@@ -29,6 +31,8 @@ import type {
 
 function ModelDetail() {
   const { modelId } = useParams();
+
+  const { user } = useAuth();
 
   const parsedModelId = Number(modelId);
 
@@ -135,6 +139,34 @@ function ModelDetail() {
   }, [modelId, parsedModelId]);
 
 
+  const isAdmin =
+    user?.role === "admin";
+
+  const isReviewer =
+    user?.role === "reviewer";
+
+  const isOwnerOfModel =
+    user?.role === "model_owner" &&
+    model !== null &&
+    user.email.toLowerCase() ===
+      model.owner_email.toLowerCase();
+
+  const canManageModel =
+    isAdmin || isOwnerOfModel;
+
+  const canReviewModel =
+    isAdmin || isReviewer;
+
+  const canCreateFinding =
+    isAdmin || isReviewer;
+
+  const canResolveFinding =
+    isAdmin || isOwnerOfModel;
+
+  const canRecordMonitoring =
+    isAdmin || isOwnerOfModel;
+
+
   async function handleLifecycleAction(
     action: LifecycleAction,
   ) {
@@ -149,6 +181,7 @@ function ModelDetail() {
         );
 
       setModel(updated);
+
       refreshAudit();
     } catch (err) {
       if (err instanceof Error) {
@@ -218,61 +251,90 @@ function ModelDetail() {
 
     switch (model.lifecycle_status) {
       case "draft":
-        return (
-          <button
-            disabled={updatingLifecycle}
-            onClick={() =>
-              handleLifecycleAction(
-                "submit_for_review",
-              )
-            }
-          >
-            Submit for Review
-          </button>
-        );
-
-      case "under_review":
-        return (
-          <>
+        if (canManageModel) {
+          return (
             <button
               disabled={updatingLifecycle}
               onClick={() =>
                 handleLifecycleAction(
-                  "approve",
+                  "submit_for_review",
                 )
               }
             >
-              Approve
+              Submit for Review
             </button>
+          );
+        }
 
+        return (
+          <p className="muted-text">
+            Waiting for the model owner to submit
+            this model for review.
+          </p>
+        );
+
+
+      case "under_review":
+        if (canReviewModel) {
+          return (
+            <>
+              <button
+                disabled={updatingLifecycle}
+                onClick={() =>
+                  handleLifecycleAction(
+                    "approve",
+                  )
+                }
+              >
+                Approve
+              </button>
+
+              <button
+                className="secondary-button"
+                disabled={updatingLifecycle}
+                onClick={() =>
+                  handleLifecycleAction(
+                    "reject",
+                  )
+                }
+              >
+                Reject
+              </button>
+            </>
+          );
+        }
+
+        return (
+          <p className="muted-text">
+            This model is awaiting reviewer
+            approval.
+          </p>
+        );
+
+
+      case "approved":
+        if (canManageModel) {
+          return (
             <button
               className="secondary-button"
               disabled={updatingLifecycle}
               onClick={() =>
                 handleLifecycleAction(
-                  "reject",
+                  "retire",
                 )
               }
             >
-              Reject
+              Retire Model
             </button>
-          </>
+          );
+        }
+
+        return (
+          <p className="muted-text">
+            This model is approved.
+          </p>
         );
 
-      case "approved":
-        return (
-          <button
-            className="secondary-button"
-            disabled={updatingLifecycle}
-            onClick={() =>
-              handleLifecycleAction(
-                "retire",
-              )
-            }
-          >
-            Retire Model
-          </button>
-        );
 
       case "retired":
         return (
@@ -280,6 +342,7 @@ function ModelDetail() {
             This model has been retired.
           </p>
         );
+
 
       default:
         return null;
@@ -295,17 +358,20 @@ function ModelDetail() {
         </Link>
       </div>
 
+
       {loading && (
         <p className="content-message">
           Loading model...
         </p>
       )}
 
+
       {error && (
         <p className="error">
           {error}
         </p>
       )}
+
 
       {!loading &&
         !error &&
@@ -354,6 +420,7 @@ function ModelDetail() {
                 </strong>
               </div>
 
+
               <div className="detail-card">
                 <span>
                   Model Type
@@ -364,6 +431,7 @@ function ModelDetail() {
                 </strong>
               </div>
 
+
               <div className="detail-card">
                 <span>
                   Owner
@@ -373,6 +441,7 @@ function ModelDetail() {
                   {model.owner_email}
                 </strong>
               </div>
+
 
               <div className="detail-card">
                 <span>
@@ -432,82 +501,109 @@ function ModelDetail() {
               </div>
 
 
-              <div className="management-card">
-                <div className="section-heading">
-                  <div>
-                    <h2>
-                      Add Version
-                    </h2>
+              {canManageModel && (
+                <div className="management-card">
+                  <div className="section-heading">
+                    <div>
+                      <h2>
+                        Add Version
+                      </h2>
 
-                    <p>
-                      Register a new version
-                      of this model.
+                      <p>
+                        Register a new version
+                        of this model.
+                      </p>
+                    </div>
+                  </div>
+
+                  <form
+                    className="version-form"
+                    onSubmit={
+                      handleVersionSubmit
+                    }
+                  >
+                    <label>
+                      Version Number
+
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={
+                          versionNumber
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setVersionNumber(
+                            Number(
+                              event.target
+                                .value,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+
+                    <label>
+                      Description
+
+                      <textarea
+                        required
+                        minLength={5}
+                        value={
+                          versionDescription
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setVersionDescription(
+                            event.target
+                              .value,
+                          )
+                        }
+                        placeholder="Describe the changes in this version."
+                      />
+                    </label>
+
+                    <button
+                      type="submit"
+                      disabled={
+                        submittingVersion
+                      }
+                    >
+                      {submittingVersion
+                        ? "Adding..."
+                        : "Add Version"}
+                    </button>
+                  </form>
+                </div>
+              )}
+
+
+              {!canManageModel && (
+                <div className="management-card">
+                  <div className="section-heading">
+                    <div>
+                      <h2>
+                        Version Management
+                      </h2>
+
+                      <p>
+                        Model versions are managed
+                        by the model owner.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="card-content">
+                    <p className="muted-text">
+                      Your role has read-only access
+                      to version history.
                     </p>
                   </div>
                 </div>
-
-                <form
-                  className="version-form"
-                  onSubmit={
-                    handleVersionSubmit
-                  }
-                >
-                  <label>
-                    Version Number
-
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      value={
-                        versionNumber
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        setVersionNumber(
-                          Number(
-                            event.target
-                              .value,
-                          ),
-                        )
-                      }
-                    />
-                  </label>
-
-                  <label>
-                    Description
-
-                    <textarea
-                      required
-                      minLength={5}
-                      value={
-                        versionDescription
-                      }
-                      onChange={(
-                        event,
-                      ) =>
-                        setVersionDescription(
-                          event.target
-                            .value,
-                        )
-                      }
-                      placeholder="Describe the changes in this version."
-                    />
-                  </label>
-
-                  <button
-                    type="submit"
-                    disabled={
-                      submittingVersion
-                    }
-                  >
-                    {submittingVersion
-                      ? "Adding..."
-                      : "Add Version"}
-                  </button>
-                </form>
-              </div>
+              )}
             </section>
 
 
@@ -519,9 +615,8 @@ function ModelDetail() {
                   </h2>
 
                   <p>
-                    Version history
-                    registered for this
-                    model.
+                    Version history registered for
+                    this model.
                   </p>
                 </div>
               </div>
@@ -578,29 +673,22 @@ function ModelDetail() {
 
 
             <FindingsPanel
-              modelId={
-                parsedModelId
-              }
-              onChanged={
-                refreshAudit
-              }
+              modelId={parsedModelId}
+              canCreate={canCreateFinding}
+              canResolve={canResolveFinding}
+              onChanged={refreshAudit}
             />
 
 
             <MonitoringPanel
-              modelId={
-                parsedModelId
-              }
-              onChanged={
-                refreshAudit
-              }
+              modelId={parsedModelId}
+              canRecord={canRecordMonitoring}
+              onChanged={refreshAudit}
             />
 
 
             <AuditPanel
-              modelId={
-                parsedModelId
-              }
+              modelId={parsedModelId}
               refreshToken={
                 auditRefreshToken
               }

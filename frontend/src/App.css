@@ -605,3 +605,13 @@ textarea {
     padding: 0 0 8px;
   }
 }
+
+.permission-note {
+  padding: 14px 16px;
+  margin: 0 0 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 13px;
+}

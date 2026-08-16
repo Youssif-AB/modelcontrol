@@ -18,12 +18,16 @@ import type {
 
 interface FindingsPanelProps {
   modelId: number;
+  canCreate: boolean;
+  canResolve: boolean;
   onChanged: () => void;
 }
 
 
 function FindingsPanel({
   modelId,
+  canCreate,
+  canResolve,
   onChanged,
 }: FindingsPanelProps) {
   const [findings, setFindings] =
@@ -50,8 +54,10 @@ function FindingsPanel({
   const [resolvingId, setResolvingId] =
     useState<number | null>(null);
 
-  const [resolutionNotes, setResolutionNotes] =
-    useState("");
+  const [
+    resolutionNotes,
+    setResolutionNotes,
+  ] = useState("");
 
 
   async function loadFindings() {
@@ -59,14 +65,17 @@ function FindingsPanel({
       setLoading(true);
       setError(null);
 
-      const data = await fetchFindings(modelId);
+      const data =
+        await fetchFindings(modelId);
 
       setFindings(data);
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Unable to load findings.");
+        setError(
+          "Unable to load findings.",
+        );
       }
     } finally {
       setLoading(false);
@@ -88,14 +97,15 @@ function FindingsPanel({
       setSubmitting(true);
       setError(null);
 
-      const created = await createFinding(
-        modelId,
-        {
-          title,
-          description,
-          severity,
-        },
-      );
+      const created =
+        await createFinding(
+          modelId,
+          {
+            title,
+            description,
+            severity,
+          },
+        );
 
       setFindings((current) => [
         ...current,
@@ -111,7 +121,9 @@ function FindingsPanel({
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Unable to create finding.");
+        setError(
+          "Unable to create finding.",
+        );
       }
     } finally {
       setSubmitting(false);
@@ -125,10 +137,11 @@ function FindingsPanel({
     try {
       setError(null);
 
-      const updated = await resolveFinding(
-        findingId,
-        resolutionNotes,
-      );
+      const updated =
+        await resolveFinding(
+          findingId,
+          resolutionNotes,
+        );
 
       setFindings((current) =>
         current.map((finding) =>
@@ -146,26 +159,34 @@ function FindingsPanel({
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Unable to resolve finding.");
+        setError(
+          "Unable to resolve finding.",
+        );
       }
     }
   }
 
 
-  const openFindings = findings.filter(
-    (finding) => finding.status === "open",
-  );
+  const openFindings =
+    findings.filter(
+      (finding) =>
+        finding.status === "open",
+    );
 
-  const resolvedFindings = findings.filter(
-    (finding) => finding.status === "resolved",
-  );
+  const resolvedFindings =
+    findings.filter(
+      (finding) =>
+        finding.status === "resolved",
+    );
 
 
   return (
     <section className="panel-section">
       <div className="section-heading">
         <div>
-          <h2>Review Findings</h2>
+          <h2>
+            Review Findings
+          </h2>
 
           <p>
             Record and resolve issues identified
@@ -178,90 +199,112 @@ function FindingsPanel({
         </span>
       </div>
 
+
       <div className="panel-content">
-        <form
-          className="finding-form"
-          onSubmit={handleCreateFinding}
-        >
-          <h3>Add Finding</h3>
+        {canCreate && (
+          <form
+            className="finding-form"
+            onSubmit={
+              handleCreateFinding
+            }
+          >
+            <h3>
+              Add Finding
+            </h3>
 
-          <div className="finding-form-grid">
+            <div className="finding-form-grid">
+              <label>
+                Title
+
+                <input
+                  required
+                  minLength={3}
+                  value={title}
+                  onChange={(event) =>
+                    setTitle(
+                      event.target.value,
+                    )
+                  }
+                  placeholder="Missing validation evidence"
+                />
+              </label>
+
+
+              <label>
+                Severity
+
+                <select
+                  value={severity}
+                  onChange={(event) =>
+                    setSeverity(
+                      event.target
+                        .value as FindingSeverity,
+                    )
+                  }
+                >
+                  <option value="low">
+                    Low
+                  </option>
+
+                  <option value="medium">
+                    Medium
+                  </option>
+
+                  <option value="high">
+                    High
+                  </option>
+
+                  <option value="critical">
+                    Critical
+                  </option>
+                </select>
+              </label>
+            </div>
+
+
             <label>
-              Title
+              Description
 
-              <input
+              <textarea
                 required
-                minLength={3}
-                value={title}
+                minLength={10}
+                value={description}
                 onChange={(event) =>
-                  setTitle(event.target.value)
+                  setDescription(
+                    event.target.value,
+                  )
                 }
-                placeholder="Missing validation evidence"
+                placeholder="Describe the issue discovered during review."
               />
             </label>
 
-            <label>
-              Severity
 
-              <select
-                value={severity}
-                onChange={(event) =>
-                  setSeverity(
-                    event.target
-                      .value as FindingSeverity,
-                  )
-                }
-              >
-                <option value="low">
-                  Low
-                </option>
+            <button
+              type="submit"
+              disabled={submitting}
+            >
+              {submitting
+                ? "Adding..."
+                : "Add Finding"}
+            </button>
+          </form>
+        )}
 
-                <option value="medium">
-                  Medium
-                </option>
 
-                <option value="high">
-                  High
-                </option>
+        {!canCreate && (
+          <p className="permission-note">
+            Your role can view findings but
+            cannot create new review findings.
+          </p>
+        )}
 
-                <option value="critical">
-                  Critical
-                </option>
-              </select>
-            </label>
-          </div>
-
-          <label>
-            Description
-
-            <textarea
-              required
-              minLength={10}
-              value={description}
-              onChange={(event) =>
-                setDescription(
-                  event.target.value,
-                )
-              }
-              placeholder="Describe the issue discovered during review."
-            />
-          </label>
-
-          <button
-            type="submit"
-            disabled={submitting}
-          >
-            {submitting
-              ? "Adding..."
-              : "Add Finding"}
-          </button>
-        </form>
 
         {error && (
           <p className="error">
             {error}
           </p>
         )}
+
 
         {loading ? (
           <p className="content-message">
@@ -279,96 +322,133 @@ function FindingsPanel({
                   No open findings.
                 </p>
               ) : (
-                openFindings.map((finding) => (
-                  <article
-                    className="finding-card"
-                    key={finding.id}
-                  >
-                    <div className="finding-header">
-                      <div>
-                        <h4>
-                          {finding.title}
-                        </h4>
+                openFindings.map(
+                  (finding) => (
+                    <article
+                      className="finding-card"
+                      key={finding.id}
+                    >
+                      <div className="finding-header">
+                        <div>
+                          <h4>
+                            {finding.title}
+                          </h4>
 
-                        <span
-                          className={`severity-badge ${finding.severity}`}
-                        >
-                          {finding.severity}
+                          <span
+                            className={`severity-badge ${finding.severity}`}
+                          >
+                            {
+                              finding.severity
+                            }
+                          </span>
+                        </div>
+
+                        <span className="status-open">
+                          Open
                         </span>
                       </div>
 
-                      <span className="status-open">
-                        Open
-                      </span>
-                    </div>
 
-                    <p>
-                      {finding.description}
-                    </p>
+                      <p>
+                        {finding.description}
+                      </p>
 
-                    {resolvingId === finding.id ? (
-                      <div className="resolution-form">
-                        <label>
-                          Resolution Notes
 
-                          <textarea
-                            minLength={5}
-                            value={resolutionNotes}
-                            onChange={(event) =>
-                              setResolutionNotes(
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Explain how this issue was resolved."
-                          />
-                        </label>
+                      {canResolve &&
+                        resolvingId ===
+                          finding.id && (
+                          <div className="resolution-form">
+                            <label>
+                              Resolution Notes
 
-                        <div className="resolution-actions">
-                          <button
-                            type="button"
-                            disabled={
-                              resolutionNotes.trim()
-                                .length < 5
-                            }
-                            onClick={() =>
-                              handleResolve(
-                                finding.id,
-                              )
-                            }
-                          >
-                            Confirm Resolution
-                          </button>
+                              <textarea
+                                minLength={5}
+                                value={
+                                  resolutionNotes
+                                }
+                                onChange={(
+                                  event,
+                                ) =>
+                                  setResolutionNotes(
+                                    event.target
+                                      .value,
+                                  )
+                                }
+                                placeholder="Explain how this issue was resolved."
+                              />
+                            </label>
 
+                            <div className="resolution-actions">
+                              <button
+                                type="button"
+                                disabled={
+                                  resolutionNotes
+                                    .trim()
+                                    .length < 5
+                                }
+                                onClick={() =>
+                                  handleResolve(
+                                    finding.id,
+                                  )
+                                }
+                              >
+                                Confirm Resolution
+                              </button>
+
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => {
+                                  setResolvingId(
+                                    null,
+                                  );
+
+                                  setResolutionNotes(
+                                    "",
+                                  );
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+
+                      {canResolve &&
+                        resolvingId !==
+                          finding.id && (
                           <button
                             type="button"
                             className="secondary-button"
                             onClick={() => {
-                              setResolvingId(null);
-                              setResolutionNotes("");
+                              setResolvingId(
+                                finding.id,
+                              );
+
+                              setResolutionNotes(
+                                "",
+                              );
                             }}
                           >
-                            Cancel
+                            Resolve Finding
                           </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => {
-                          setResolvingId(
-                            finding.id,
-                          );
-                          setResolutionNotes("");
-                        }}
-                      >
-                        Resolve Finding
-                      </button>
-                    )}
-                  </article>
-                ))
+                        )}
+
+
+                      {!canResolve && (
+                        <p className="muted-text">
+                          Resolution must be completed
+                          by the model owner or an
+                          administrator.
+                        </p>
+                      )}
+                    </article>
+                  ),
+                )
               )}
             </div>
+
 
             <div className="finding-group">
               <h3>
@@ -395,7 +475,9 @@ function FindingsPanel({
                           <span
                             className={`severity-badge ${finding.severity}`}
                           >
-                            {finding.severity}
+                            {
+                              finding.severity
+                            }
                           </span>
                         </div>
 
