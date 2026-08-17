@@ -29,6 +29,7 @@ MarkupSafe==3.0.3
 mdurl==0.1.2
 packaging==26.3
 pluggy==1.6.0
+prometheus_client==0.26.0
 psycopg==3.3.4
 psycopg-binary==3.3.4
 pwdlib==0.3.1

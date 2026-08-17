@@ -1,10 +1,14 @@
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.auth import router as auth_router
 from app.database import get_db
+from prometheus_client import make_asgi_app
+from app.observability import (
+    observability_middleware,
+)
 from app.models import (
     AuditEvent,
     ModelFinding,
@@ -37,6 +41,17 @@ from app.security import get_current_user
 
 app = FastAPI(title="ModelControl API")
 
+app.middleware("http")(
+    observability_middleware
+)
+
+metrics_app = make_asgi_app()
+
+app.mount(
+    "/metrics",
+    metrics_app,
+)
+
 app.include_router(auth_router)
 
 app.add_middleware(
@@ -45,9 +60,13 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
+    expose_headers=[
+    "X-Request-ID",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    
 )
 
 
@@ -102,6 +121,23 @@ def add_audit_event(
 @app.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+@app.get("/ready")
+def readiness_check(
+    db: Session = Depends(get_db),
+):
+    try:
+        db.execute(text("SELECT 1"))
+
+        return {
+            "status": "ready"
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database unavailable",
+        )
 
 
 @app.post(
