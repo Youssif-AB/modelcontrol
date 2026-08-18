@@ -2,15 +2,19 @@ from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
+    Request,
     status,
 )
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import (
+    OAuth2PasswordRequestForm,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
 from app.permissions import require_roles
+from app.rate_limit import limiter
 from app.schemas import (
     Token,
     UserCreate,
@@ -31,29 +35,29 @@ router = APIRouter()
     "/auth/login",
     response_model=Token,
 )
+@limiter.limit("5/minute")
 def login(
-    form: OAuth2PasswordRequestForm = Depends(),
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ) -> Token:
     user = authenticate_user(
         db,
-        form.username,
-        form.password,
+        form_data.username,
+        form_data.password,
     )
 
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Invalid email or password",
             headers={
-                "WWW-Authenticate": "Bearer",
+                "WWW-Authenticate": "Bearer"
             },
         )
 
-    token = create_access_token(user)
-
     return Token(
-        access_token=token,
+        access_token=create_access_token(user),
         token_type="bearer",
     )
 
@@ -62,9 +66,9 @@ def login(
     "/auth/me",
     response_model=UserRead,
 )
-def get_me(
+def read_current_user(
     current_user: User = Depends(
-        get_current_user,
+        get_current_user
     ),
 ) -> User:
     return current_user
@@ -79,30 +83,33 @@ def create_user(
     user_data: UserCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(
-        require_roles("admin"),
+        require_roles("admin")
     ),
 ) -> User:
     email = str(
-        user_data.email,
-    ).strip().lower()
+        user_data.email
+    ).lower()
 
-    existing = db.scalar(
+    existing_user = db.scalar(
         select(User).where(
-            User.email == email,
+            User.email == email
         )
     )
 
-    if existing is not None:
+    if existing_user is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
+            detail=(
+                "A user with this email "
+                "already exists"
+            ),
         )
 
     user = User(
         email=email,
-        full_name=user_data.full_name.strip(),
+        full_name=user_data.full_name,
         password_hash=hash_password(
-            user_data.password,
+            user_data.password
         ),
         role=user_data.role.value,
     )

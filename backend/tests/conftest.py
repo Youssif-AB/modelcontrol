@@ -1,11 +1,35 @@
+import os
+
+os.environ["ENVIRONMENT"] = "test"
+os.environ["RATE_LIMIT_ENABLED"] = "false"
+
+os.environ["DATABASE_URL"] = "sqlite://"
+
+os.environ["JWT_SECRET_KEY"] = (
+    "modelcontrol-test-secret-key-"
+    "do-not-use-in-production"
+)
+
+os.environ["MLFLOW_TRACKING_URI"] = (
+    "http://localhost:5000"
+)
+
 import pytest
 
-from fastapi.testclient import TestClient
+from fastapi.testclient import (
+    TestClient,
+)
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import (
+    Session,
+    sessionmaker,
+)
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
+from app.database import (
+    Base,
+    get_db,
+)
 from app.main import app
 from app.models import User
 from app.security import hash_password
@@ -32,17 +56,26 @@ TestingSessionLocal = sessionmaker(
 
 @pytest.fixture(autouse=True)
 def reset_database():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.drop_all(
+        bind=engine
+    )
+
+    Base.metadata.create_all(
+        bind=engine
+    )
 
     yield
 
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(
+        bind=engine
+    )
 
 
 @pytest.fixture
 def db():
-    session = TestingSessionLocal()
+    session = (
+        TestingSessionLocal()
+    )
 
     try:
         yield session
@@ -53,18 +86,22 @@ def db():
 @pytest.fixture
 def client():
     def override_get_db():
-        session = TestingSessionLocal()
+        session = (
+            TestingSessionLocal()
+        )
 
         try:
             yield session
         finally:
             session.close()
 
-    app.dependency_overrides[get_db] = (
-        override_get_db
-    )
+    app.dependency_overrides[
+        get_db
+    ] = override_get_db
 
-    with TestClient(app) as test_client:
+    with TestClient(
+        app
+    ) as test_client:
         yield test_client
 
     app.dependency_overrides.clear()
@@ -74,7 +111,9 @@ def create_test_user(
     db: Session,
     email: str,
     role: str,
-    password: str = "TestPassword123!",
+    password: str = (
+        "TestPassword123!"
+    ),
 ) -> User:
     user = User(
         email=email,
@@ -122,7 +161,9 @@ def reviewer_user(db):
 def login(
     client: TestClient,
     email: str,
-    password: str = "TestPassword123!",
+    password: str = (
+        "TestPassword123!"
+    ),
 ) -> str:
     response = client.post(
         "/auth/login",
@@ -132,7 +173,10 @@ def login(
         },
     )
 
-    assert response.status_code == 200
+    assert (
+        response.status_code
+        == 200
+    )
 
     return response.json()[
         "access_token"
@@ -143,7 +187,6 @@ def auth_headers(
     token: str,
 ) -> dict[str, str]:
     return {
-        "Authorization": (
+        "Authorization":
             f"Bearer {token}"
-        )
     }

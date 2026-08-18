@@ -1,37 +1,62 @@
 import json
 import logging
-import os
 import time
 import uuid
 
-from datetime import datetime, timezone
+from datetime import (
+    datetime,
+    timezone,
+)
 
 from fastapi import Request
-from prometheus_client import Counter, Histogram
+
+from prometheus_client import (
+    Counter,
+    Histogram,
+)
+
+from app.config import settings
 
 
 HTTP_REQUESTS = Counter(
     "modelcontrol_http_requests_total",
     "Total number of HTTP requests",
-    ["method", "path", "status"],
+    [
+        "method",
+        "path",
+        "status",
+    ],
 )
+
 
 HTTP_REQUEST_DURATION = Histogram(
     "modelcontrol_http_request_duration_seconds",
     "HTTP request latency in seconds",
-    ["method", "path"],
+    [
+        "method",
+        "path",
+    ],
 )
 
 
-class JsonFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
+class JsonFormatter(
+    logging.Formatter
+):
+    def format(
+        self,
+        record: logging.LogRecord,
+    ) -> str:
         payload = {
-            "timestamp": datetime.now(
-                timezone.utc
-            ).isoformat(),
+            "timestamp": (
+                datetime.now(
+                    timezone.utc
+                ).isoformat()
+            ),
             "level": record.levelname,
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": (
+                record.getMessage()
+            ),
         }
 
         for field in (
@@ -57,7 +82,9 @@ class JsonFormatter(logging.Formatter):
                 )
             )
 
-        return json.dumps(payload)
+        return json.dumps(
+            payload
+        )
 
 
 def configure_logging() -> logging.Logger:
@@ -65,10 +92,9 @@ def configure_logging() -> logging.Logger:
         "modelcontrol"
     )
 
-    level_name = os.getenv(
-        "LOG_LEVEL",
-        "INFO",
-    ).upper()
+    level_name = (
+        settings.log_level.upper()
+    )
 
     level = getattr(
         logging,
@@ -77,12 +103,19 @@ def configure_logging() -> logging.Logger:
     )
 
     logger.setLevel(level)
+
     logger.handlers.clear()
 
-    handler = logging.StreamHandler()
-    handler.setFormatter(JsonFormatter())
+    handler = (
+        logging.StreamHandler()
+    )
+
+    handler.setFormatter(
+        JsonFormatter()
+    )
 
     logger.addHandler(handler)
+
     logger.propagate = False
 
     return logger
@@ -108,11 +141,17 @@ async def observability_middleware(
         and len(incoming_request_id)
         <= 128
     ):
-        request_id = incoming_request_id
+        request_id = (
+            incoming_request_id
+        )
     else:
-        request_id = str(uuid.uuid4())
+        request_id = str(
+            uuid.uuid4()
+        )
 
-    request.state.request_id = request_id
+    request.state.request_id = (
+        request_id
+    )
 
     status_code = 500
 
@@ -135,10 +174,14 @@ async def observability_middleware(
         logger.exception(
             "Unhandled request exception",
             extra={
-                "request_id": request_id,
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": 500,
+                "request_id":
+                    request_id,
+                "method":
+                    request.method,
+                "path":
+                    request.url.path,
+                "status_code":
+                    500,
             },
         )
 
@@ -146,11 +189,14 @@ async def observability_middleware(
 
     finally:
         duration = (
-            time.perf_counter() - start
+            time.perf_counter()
+            - start
         )
 
-        route = request.scope.get(
-            "route"
+        route = (
+            request.scope.get(
+                "route"
+            )
         )
 
         route_path = getattr(
@@ -162,24 +208,33 @@ async def observability_middleware(
         HTTP_REQUESTS.labels(
             method=request.method,
             path=route_path,
-            status=str(status_code),
+            status=str(
+                status_code
+            ),
         ).inc()
 
         HTTP_REQUEST_DURATION.labels(
             method=request.method,
             path=route_path,
-        ).observe(duration)
+        ).observe(
+            duration
+        )
 
         logger.info(
             "HTTP request completed",
             extra={
-                "request_id": request_id,
-                "method": request.method,
-                "path": route_path,
-                "status_code": status_code,
-                "duration_ms": round(
-                    duration * 1000,
-                    2,
-                ),
+                "request_id":
+                    request_id,
+                "method":
+                    request.method,
+                "path":
+                    route_path,
+                "status_code":
+                    status_code,
+                "duration_ms":
+                    round(
+                        duration * 1000,
+                        2,
+                    ),
             },
         )

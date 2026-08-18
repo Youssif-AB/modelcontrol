@@ -1,13 +1,49 @@
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, text
+import json
+
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    status,
+)
+from fastapi.middleware.cors import (
+    CORSMiddleware,
+)
+from fastapi.middleware.trustedhost import (
+    TrustedHostMiddleware,
+)
+from prometheus_client import (
+    make_asgi_app,
+)
+from slowapi import (
+    _rate_limit_exceeded_handler,
+)
+from slowapi.errors import (
+    RateLimitExceeded,
+)
+from sqlalchemy import (
+    func,
+    select,
+    text,
+)
+from sqlalchemy.exc import (
+    IntegrityError,
+    SQLAlchemyError,
+)
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+
 from app.auth import router as auth_router
+from app.config import settings
 from app.database import get_db
-from prometheus_client import make_asgi_app
-from app.observability import (
-    observability_middleware,
+from app.mlflow_schemas import (
+    MLflowImportRequest,
+    MLflowImportResult,
+    MLflowRegisteredModelRead,
+)
+from app.mlflow_service import (
+    MLflowIntegrationError,
+    get_mlflow_version_details,
+    list_mlflow_models,
 )
 from app.models import (
     AuditEvent,
@@ -17,11 +53,15 @@ from app.models import (
     MonitoringRecord,
     User,
 )
+from app.observability import (
+    observability_middleware,
+)
 from app.permissions import (
     ensure_lifecycle_permission,
     ensure_model_owner_or_admin,
     require_roles,
 )
+from app.rate_limit import limiter
 from app.schemas import (
     AuditEventRead,
     FindingCreate,
@@ -36,14 +76,75 @@ from app.schemas import (
     MonitoringCreate,
     MonitoringRead,
 )
-from app.security import get_current_user
+from app.security import (
+    get_current_user,
+)
+from app.security_headers import (
+    security_headers_middleware,
+)
 
 
-app = FastAPI(title="ModelControl API")
+app = FastAPI(
+    title="ModelControl API",
+    docs_url=(
+        "/docs"
+        if settings.docs_enabled
+        else None
+    ),
+    redoc_url=(
+        "/redoc"
+        if settings.docs_enabled
+        else None
+    ),
+    openapi_url=(
+        "/openapi.json"
+        if settings.docs_enabled
+        else None
+    ),
+)
+
+
+app.state.limiter = limiter
+
+app.add_exception_handler(
+    RateLimitExceeded,
+    _rate_limit_exceeded_handler,
+)
+
+
+app.include_router(auth_router)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=(
+        settings.cors_origin_list
+    ),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=[
+        "X-Request-ID",
+    ],
+)
+
+
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=(
+        settings.allowed_host_list
+    ),
+)
+
+
+app.middleware("http")(
+    security_headers_middleware
+)
 
 app.middleware("http")(
     observability_middleware
 )
+
 
 metrics_app = make_asgi_app()
 
@@ -52,29 +153,27 @@ app.mount(
     metrics_app,
 )
 
-app.include_router(auth_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
-    expose_headers=[
-    "X-Request-ID",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    
-)
-
 
 LIFECYCLE_TRANSITIONS = {
-    ("draft", "submit_for_review"): "under_review",
-    ("under_review", "approve"): "approved",
-    ("under_review", "reject"): "draft",
-    ("approved", "retire"): "retired",
+    (
+        "draft",
+        "submit_for_review",
+    ): "under_review",
+
+    (
+        "under_review",
+        "approve",
+    ): "approved",
+
+    (
+        "under_review",
+        "reject",
+    ): "draft",
+
+    (
+        "approved",
+        "retire",
+    ): "retired",
 }
 
 
@@ -83,10 +182,17 @@ def calculate_degradation(
     current: float,
     direction: MetricDirection,
 ) -> float:
-    if direction == MetricDirection.higher_is_better:
-        return (baseline - current) / baseline
+    if (
+        direction
+        == MetricDirection.higher_is_better
+    ):
+        return (
+            baseline - current
+        ) / baseline
 
-    return (current - baseline) / baseline
+    return (
+        current - baseline
+    ) / baseline
 
 
 def determine_monitoring_status(
@@ -94,10 +200,16 @@ def determine_monitoring_status(
     warning_threshold: float,
     critical_threshold: float,
 ) -> str:
-    if degradation >= critical_threshold:
+    if (
+        degradation
+        >= critical_threshold
+    ):
         return "critical"
 
-    if degradation >= warning_threshold:
+    if (
+        degradation
+        >= warning_threshold
+    ):
         return "warning"
 
     return "healthy"
@@ -109,44 +221,215 @@ def add_audit_event(
     event_type: str,
     description: str,
 ) -> None:
-    event = AuditEvent(
-        model_id=model_id,
-        event_type=event_type,
-        description=description,
+    db.add(
+        AuditEvent(
+            model_id=model_id,
+            event_type=event_type,
+            description=description,
+        )
     )
-
-    db.add(event)
 
 
 @app.get("/health")
-def health_check() -> dict[str, str]:
-    return {"status": "ok"}
+def health_check():
+    return {
+        "status": "ok",
+    }
+
 
 @app.get("/ready")
 def readiness_check(
     db: Session = Depends(get_db),
 ):
     try:
-        db.execute(text("SELECT 1"))
-
-        return {
-            "status": "ready"
-        }
-
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database unavailable",
+        db.execute(
+            text("SELECT 1")
         )
+
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            ),
+            detail="Database unavailable",
+        ) from None
+
+    return {
+        "status": "ready",
+    }
+
+
+@app.get(
+    "/integrations/mlflow/models",
+    response_model=list[
+        MLflowRegisteredModelRead
+    ],
+)
+def get_mlflow_models(
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    try:
+        return list_mlflow_models()
+
+    except MLflowIntegrationError:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_502_BAD_GATEWAY
+            ),
+            detail=(
+                "MLflow tracking server "
+                "is unavailable"
+            ),
+        ) from None
+
+
+@app.post(
+    (
+        "/models/{model_id}/"
+        "versions/import/mlflow"
+    ),
+    response_model=MLflowImportResult,
+    status_code=(
+        status.HTTP_201_CREATED
+    ),
+)
+def import_mlflow_version(
+    model_id: int,
+    request: MLflowImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    model = db.get(
+        ModelRecord,
+        model_id,
+    )
+
+    if model is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Model not found",
+        )
+
+    ensure_model_owner_or_admin(
+        model,
+        current_user,
+    )
+
+    try:
+        mlflow_version = (
+            get_mlflow_version_details(
+                request.model_name,
+                request.version,
+            )
+        )
+
+    except MLflowIntegrationError:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_502_BAD_GATEWAY
+            ),
+            detail=(
+                "Unable to retrieve model "
+                "version from MLflow"
+            ),
+        ) from None
+
+    current_max = db.scalar(
+        select(
+            func.max(
+                ModelVersion.version_number
+            )
+        ).where(
+            ModelVersion.model_id
+            == model_id
+        )
+    )
+
+    next_version = (
+        current_max or 0
+    ) + 1
+
+    description = (
+        "Imported from MLflow. "
+        f"registered_model="
+        f"{mlflow_version.name}; "
+        f"mlflow_version="
+        f"{mlflow_version.version}; "
+        f"run_id="
+        f"{mlflow_version.run_id}; "
+        f"source="
+        f"{mlflow_version.source}; "
+        f"metrics="
+        f"{json.dumps(
+            mlflow_version.metrics,
+            sort_keys=True
+        )}; "
+        f"params="
+        f"{json.dumps(
+            mlflow_version.params,
+            sort_keys=True
+        )}"
+    )
+
+    record = ModelVersion(
+        model_id=model_id,
+        version_number=next_version,
+        description=description,
+    )
+
+    db.add(record)
+
+    add_audit_event(
+        db,
+        model_id,
+        "mlflow_version_imported",
+        (
+            "Imported MLflow model "
+            f"'{mlflow_version.name}' "
+            f"version "
+            f"{mlflow_version.version} "
+            "as ModelControl version "
+            f"{next_version}."
+        ),
+    )
+
+    try:
+        db.commit()
+
+    except IntegrityError:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=(
+                status.HTTP_409_CONFLICT
+            ),
+            detail=(
+                "Unable to allocate a new "
+                "model version"
+            ),
+        ) from None
+
+    db.refresh(record)
+
+    return MLflowImportResult(
+        version=record,
+        mlflow=mlflow_version,
+    )
 
 
 @app.post(
     "/models/validate",
-    dependencies=[Depends(get_current_user)],
+    dependencies=[
+        Depends(get_current_user),
+    ],
 )
 def validate_model(
     model: ModelCreate,
-) -> ModelCreate:
+):
     return model
 
 
@@ -164,27 +447,38 @@ def create_model(
             "model_owner",
         )
     ),
-) -> ModelRecord:
+):
+    owner_email = str(
+        model.owner_email
+    )
+
     if (
-        current_user.role == "model_owner"
-        and str(model.owner_email).lower()
+        current_user.role
+        == "model_owner"
+        and owner_email.lower()
         != current_user.email.lower()
     ):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=403,
             detail=(
-                "Model owners can only register models "
-                "under their own account"
+                "Model owners may only "
+                "register models they own"
             ),
         )
 
     record = ModelRecord(
         name=model.name,
         purpose=model.purpose,
-        business_area=model.business_area,
-        owner_email=str(model.owner_email),
-        model_type=model.model_type.value,
-        risk_tier=model.risk_tier.value,
+        business_area=(
+            model.business_area
+        ),
+        owner_email=owner_email,
+        model_type=(
+            model.model_type.value
+        ),
+        risk_tier=(
+            model.risk_tier.value
+        ),
     )
 
     db.add(record)
@@ -194,7 +488,10 @@ def create_model(
         db,
         record.id,
         "model_created",
-        f"Model '{record.name}' was registered.",
+        (
+            f"Model '{record.name}' "
+            "was registered."
+        ),
     )
 
     db.commit()
@@ -206,28 +503,30 @@ def create_model(
 @app.get(
     "/models",
     response_model=list[ModelRead],
-    dependencies=[Depends(get_current_user)],
 )
 def list_models(
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
-    statement = (
+    return db.scalars(
         select(ModelRecord)
         .order_by(ModelRecord.id)
-    )
-
-    return db.scalars(statement).all()
+    ).all()
 
 
 @app.get(
     "/models/{model_id}",
     response_model=ModelRead,
-    dependencies=[Depends(get_current_user)],
 )
 def get_model(
     model_id: int,
     db: Session = Depends(get_db),
-) -> ModelRecord:
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
     model = db.get(
         ModelRecord,
         model_id,
@@ -235,7 +534,7 @@ def get_model(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
@@ -254,7 +553,7 @@ def create_model_version(
     current_user: User = Depends(
         get_current_user
     ),
-) -> ModelVersion:
+):
     model = db.get(
         ModelRecord,
         model_id,
@@ -262,7 +561,7 @@ def create_model_version(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
@@ -273,7 +572,8 @@ def create_model_version(
 
     existing_version = db.scalar(
         select(ModelVersion).where(
-            ModelVersion.model_id == model_id,
+            ModelVersion.model_id
+            == model_id,
             ModelVersion.version_number
             == version.version_number,
         )
@@ -281,16 +581,19 @@ def create_model_version(
 
     if existing_version is not None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=409,
             detail=(
-                f"Version {version.version_number} "
+                f"Version "
+                f"{version.version_number} "
                 "already exists for this model"
             ),
         )
 
     record = ModelVersion(
         model_id=model_id,
-        version_number=version.version_number,
+        version_number=(
+            version.version_number
+        ),
         description=version.description,
     )
 
@@ -300,34 +603,45 @@ def create_model_version(
         db,
         model_id,
         "version_created",
-        f"Version {version.version_number} was added.",
+        (
+            f"Version "
+            f"{version.version_number} "
+            "was added."
+        ),
     )
 
     try:
         db.commit()
+
     except IntegrityError:
         db.rollback()
 
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=409,
             detail=(
-                f"Version {version.version_number} "
+                f"Version "
+                f"{version.version_number} "
                 "already exists for this model"
             ),
-        )
+        ) from None
 
     db.refresh(record)
 
     return record
 
+
 @app.get(
     "/models/{model_id}/versions",
-    response_model=list[ModelVersionRead],
-    dependencies=[Depends(get_current_user)],
+    response_model=list[
+        ModelVersionRead
+    ],
 )
 def list_model_versions(
     model_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     model = db.get(
         ModelRecord,
@@ -336,21 +650,20 @@ def list_model_versions(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
-    statement = (
+    return db.scalars(
         select(ModelVersion)
         .where(
-            ModelVersion.model_id == model_id
+            ModelVersion.model_id
+            == model_id
         )
         .order_by(
             ModelVersion.version_number
         )
-    )
-
-    return db.scalars(statement).all()
+    ).all()
 
 
 @app.patch(
@@ -364,7 +677,7 @@ def update_model_lifecycle(
     current_user: User = Depends(
         get_current_user
     ),
-) -> ModelRecord:
+):
     model = db.get(
         ModelRecord,
         model_id,
@@ -372,7 +685,7 @@ def update_model_lifecycle(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
@@ -399,23 +712,28 @@ def update_model_lifecycle(
 
     if next_status is None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=409,
             detail=(
-                f"Cannot {request.action.value} model "
-                f"from {model.lifecycle_status} status"
+                f"Cannot "
+                f"{request.action.value} "
+                f"model from "
+                f"{model.lifecycle_status} "
+                "status"
             ),
         )
 
-    model.lifecycle_status = next_status
+    model.lifecycle_status = (
+        next_status
+    )
 
     add_audit_event(
         db,
         model_id,
         "lifecycle_changed",
         (
-            f"Lifecycle changed from "
-            f"{previous_status} to "
-            f"{next_status}."
+            "Lifecycle changed from "
+            f"{previous_status} "
+            f"to {next_status}."
         ),
     )
 
@@ -440,7 +758,7 @@ def create_finding(
             "reviewer",
         )
     ),
-) -> ModelFinding:
+):
     model = db.get(
         ModelRecord,
         model_id,
@@ -448,15 +766,19 @@ def create_finding(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
     record = ModelFinding(
         model_id=model_id,
         title=finding.title,
-        description=finding.description,
-        severity=finding.severity.value,
+        description=(
+            finding.description
+        ),
+        severity=(
+            finding.severity.value
+        ),
     )
 
     db.add(record)
@@ -466,9 +788,11 @@ def create_finding(
         model_id,
         "finding_created",
         (
-            f"Finding '{finding.title}' was "
-            f"created with "
-            f"{finding.severity.value} severity."
+            f"Finding "
+            f"'{finding.title}' "
+            "was created with "
+            f"{finding.severity.value} "
+            "severity."
         ),
     )
 
@@ -481,11 +805,13 @@ def create_finding(
 @app.get(
     "/models/{model_id}/findings",
     response_model=list[FindingRead],
-    dependencies=[Depends(get_current_user)],
 )
 def list_findings(
     model_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     model = db.get(
         ModelRecord,
@@ -494,11 +820,11 @@ def list_findings(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
-    statement = (
+    return db.scalars(
         select(ModelFinding)
         .where(
             ModelFinding.model_id
@@ -507,9 +833,7 @@ def list_findings(
         .order_by(
             ModelFinding.id
         )
-    )
-
-    return db.scalars(statement).all()
+    ).all()
 
 
 @app.patch(
@@ -523,7 +847,7 @@ def resolve_finding(
     current_user: User = Depends(
         get_current_user
     ),
-) -> ModelFinding:
+):
     finding = db.get(
         ModelFinding,
         finding_id,
@@ -531,7 +855,7 @@ def resolve_finding(
 
     if finding is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Finding not found",
         )
 
@@ -542,7 +866,7 @@ def resolve_finding(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
@@ -553,7 +877,7 @@ def resolve_finding(
 
     if finding.status == "resolved":
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=409,
             detail=(
                 "Finding is already resolved"
             ),
@@ -569,8 +893,9 @@ def resolve_finding(
         finding.model_id,
         "finding_resolved",
         (
-            f"Finding '{finding.title}' "
-            f"was resolved."
+            f"Finding "
+            f"'{finding.title}' "
+            "was resolved."
         ),
     )
 
@@ -582,12 +907,16 @@ def resolve_finding(
 
 @app.get(
     "/models/{model_id}/audit",
-    response_model=list[AuditEventRead],
-    dependencies=[Depends(get_current_user)],
+    response_model=list[
+        AuditEventRead
+    ],
 )
 def list_audit_events(
     model_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     model = db.get(
         ModelRecord,
@@ -596,11 +925,11 @@ def list_audit_events(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
-    statement = (
+    return db.scalars(
         select(AuditEvent)
         .where(
             AuditEvent.model_id
@@ -610,9 +939,7 @@ def list_audit_events(
             AuditEvent.created_at,
             AuditEvent.id,
         )
-    )
-
-    return db.scalars(statement).all()
+    ).all()
 
 
 @app.post(
@@ -627,7 +954,7 @@ def create_monitoring_record(
     current_user: User = Depends(
         get_current_user
     ),
-) -> MonitoringRecord:
+):
     model = db.get(
         ModelRecord,
         model_id,
@@ -635,7 +962,7 @@ def create_monitoring_record(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
@@ -649,17 +976,22 @@ def create_monitoring_record(
         <= monitoring.warning_threshold
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_CONTENT
+            ),
             detail=(
-                "Critical threshold must be "
-                "greater than warning threshold"
+                "Critical threshold must "
+                "be greater than warning "
+                "threshold"
             ),
         )
 
-    degradation = calculate_degradation(
-        monitoring.baseline_value,
-        monitoring.current_value,
-        monitoring.direction,
+    degradation = (
+        calculate_degradation(
+            monitoring.baseline_value,
+            monitoring.current_value,
+            monitoring.direction,
+        )
     )
 
     monitoring_status = (
@@ -672,10 +1004,18 @@ def create_monitoring_record(
 
     record = MonitoringRecord(
         model_id=model_id,
-        metric_name=monitoring.metric_name,
-        baseline_value=monitoring.baseline_value,
-        current_value=monitoring.current_value,
-        direction=monitoring.direction.value,
+        metric_name=(
+            monitoring.metric_name
+        ),
+        baseline_value=(
+            monitoring.baseline_value
+        ),
+        current_value=(
+            monitoring.current_value
+        ),
+        direction=(
+            monitoring.direction.value
+        ),
         degradation=degradation,
         status=monitoring_status,
     )
@@ -687,9 +1027,9 @@ def create_monitoring_record(
         model_id,
         "monitoring_recorded",
         (
-            f"{monitoring.metric_name} monitoring "
-            f"status recorded as "
-            f"{monitoring_status}."
+            f"{monitoring.metric_name} "
+            "monitoring status recorded "
+            f"as {monitoring_status}."
         ),
     )
 
@@ -701,12 +1041,16 @@ def create_monitoring_record(
 
 @app.get(
     "/models/{model_id}/monitoring",
-    response_model=list[MonitoringRead],
-    dependencies=[Depends(get_current_user)],
+    response_model=list[
+        MonitoringRead
+    ],
 )
 def list_monitoring_records(
     model_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
 ):
     model = db.get(
         ModelRecord,
@@ -715,11 +1059,11 @@ def list_monitoring_records(
 
     if model is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=404,
             detail="Model not found",
         )
 
-    statement = (
+    return db.scalars(
         select(MonitoringRecord)
         .where(
             MonitoringRecord.model_id
@@ -729,6 +1073,4 @@ def list_monitoring_records(
             MonitoringRecord.created_at,
             MonitoringRecord.id,
         )
-    )
-
-    return db.scalars(statement).all()
+    ).all()

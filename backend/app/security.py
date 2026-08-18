@@ -1,38 +1,61 @@
-from datetime import datetime, timedelta, timezone
-import os
+from datetime import (
+    datetime,
+    timedelta,
+    timezone,
+)
 
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from jwt.exceptions import InvalidTokenError
+
+from fastapi import (
+    Depends,
+    HTTPException,
+    status,
+)
+from fastapi.security import (
+    OAuth2PasswordBearer,
+)
+
+from jwt.exceptions import (
+    InvalidTokenError,
+)
+
 from pwdlib import PasswordHash
-from sqlalchemy import select
+
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import User
 
 
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+JWT_SECRET_KEY = (
+    settings.jwt_secret_key
+    .get_secret_value()
+)
 
-if JWT_SECRET_KEY is None:
-    raise RuntimeError("JWT_SECRET_KEY is not configured")
+ALGORITHM = settings.jwt_algorithm
+
+ACCESS_TOKEN_EXPIRE_MINUTES = (
+    settings.access_token_expire_minutes
+)
 
 
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+password_hash = (
+    PasswordHash.recommended()
+)
 
-password_hash = PasswordHash.recommended()
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/auth/login",
+    tokenUrl="/auth/login"
 )
 
 
 def hash_password(
     password: str,
 ) -> str:
-    return password_hash.hash(password)
+    return password_hash.hash(
+        password
+    )
 
 
 def verify_password(
@@ -51,7 +74,9 @@ def create_access_token(
     expires_at = (
         datetime.now(timezone.utc)
         + timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES,
+            minutes=(
+                ACCESS_TOKEN_EXPIRE_MINUTES
+            )
         )
     )
 
@@ -74,16 +99,15 @@ def authenticate_user(
     email: str,
     password: str,
 ) -> User | None:
-    statement = select(User).where(
-        User.email == email,
+    from sqlalchemy import select
+
+    user = db.scalar(
+        select(User).where(
+            User.email == email
+        )
     )
 
-    user = db.scalar(statement)
-
     if user is None:
-        return None
-
-    if not user.is_active:
         return None
 
     if not verify_password(
@@ -92,19 +116,31 @@ def authenticate_user(
     ):
         return None
 
+    if not user.is_active:
+        return None
+
     return user
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: str = Depends(
+        oauth2_scheme
+    ),
     db: Session = Depends(get_db),
 ) -> User:
-    credentials_error = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-        headers={
-            "WWW-Authenticate": "Bearer",
-        },
+    credentials_exception = (
+        HTTPException(
+            status_code=(
+                status.HTTP_401_UNAUTHORIZED
+            ),
+            detail=(
+                "Could not validate credentials"
+            ),
+            headers={
+                "WWW-Authenticate":
+                    "Bearer"
+            },
+        )
     )
 
     try:
@@ -117,25 +153,33 @@ def get_current_user(
         subject = payload.get("sub")
 
         if subject is None:
-            raise credentials_error
+            raise credentials_exception
 
-        user_id = int(subject)
+        try:
+            user_id = int(subject)
+        except (
+            TypeError,
+            ValueError,
+        ):
+            raise credentials_exception
 
-    except (
-        InvalidTokenError,
-        ValueError,
-    ):
-        raise credentials_error
+    except InvalidTokenError:
+        raise credentials_exception
 
-    user = db.get(User, user_id)
+    user = db.get(
+        User,
+        user_id,
+    )
 
     if user is None:
-        raise credentials_error
+        raise credentials_exception
 
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is disabled",
+            status_code=(
+                status.HTTP_403_FORBIDDEN
+            ),
+            detail="Inactive user",
         )
 
     return user

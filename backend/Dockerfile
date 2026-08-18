@@ -12,9 +12,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY alembic.ini .
 COPY migrations ./migrations
 COPY app ./app
+COPY scripts ./scripts
 COPY create_admin.py .
 
 RUN useradd --create-home appuser \
+    && mkdir -p /app/mlflow-data /app/mlflow-artifacts \
     && chown -R appuser:appuser /app
 
 USER appuser
