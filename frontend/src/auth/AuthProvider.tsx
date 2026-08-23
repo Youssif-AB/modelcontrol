@@ -9,6 +9,7 @@ import {
   fetchCurrentUser,
   getAccessToken,
   loginUser,
+  SESSION_EXPIRED_EVENT,
   setAccessToken,
 } from "../api";
 
@@ -68,6 +69,26 @@ export function AuthProvider({
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+
+  useEffect(() => {
+    function handleSessionExpired() {
+      setUser(null);
+      setLoading(false);
+    }
+
+    window.addEventListener(
+      SESSION_EXPIRED_EVENT,
+      handleSessionExpired,
+    );
+
+    return () => {
+      window.removeEventListener(
+        SESSION_EXPIRED_EVENT,
+        handleSessionExpired,
+      );
     };
   }, []);
 

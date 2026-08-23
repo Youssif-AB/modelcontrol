@@ -24,6 +24,9 @@ const API_BASE_URL =
 const TOKEN_KEY =
   "modelcontrol_access_token";
 
+export const SESSION_EXPIRED_EVENT =
+  "modelcontrol:session-expired";
+
 
 export function getAccessToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
@@ -56,6 +59,11 @@ async function handleResponse<T>(
 
       if (typeof body.detail === "string") {
         message = body.detail;
+      } else if (Array.isArray(body.detail)) {
+        message = body.detail
+          .map((item: { msg?: string }) => item.msg)
+          .filter(Boolean)
+          .join("; ") || message;
       }
     } catch {
       // Keep fallback message.
@@ -94,6 +102,9 @@ async function authenticatedFetch(
 
   if (response.status === 401) {
     clearAccessToken();
+    window.dispatchEvent(
+      new Event(SESSION_EXPIRED_EVENT),
+    );
   }
 
   return response;
