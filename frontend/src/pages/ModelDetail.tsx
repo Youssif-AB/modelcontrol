@@ -26,6 +26,8 @@ import LifecyclePanel from "../components/LifecyclePanel";
 import VersionComparison from "../components/VersionComparison";
 import MLflowRegistryPanel
   from "../components/MLflowRegistryPanel";
+import ModelVersionsTable
+  from "../components/ModelVersionsTable";
 
 import type {
   MLflowImportResult,
@@ -484,70 +486,9 @@ function ModelDetail() {
                 </div>
               </div>
 
-              {versions.length === 0 ? (
-                <p className="empty-state">
-                  No versions registered yet.
-                </p>
-              ) : (
-                <div className="table-wrapper">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>
-                          Version
-                        </th>
-
-                        <th>
-                          Description
-                        </th>
-
-                        <th>Source</th>
-
-                        <th>Created</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {versions.map(
-                        (version) => (
-                          <tr
-                            key={
-                              version.id
-                            }
-                          >
-                            <td>
-                              <strong>
-                                v
-                                {
-                                  version.version_number
-                                }
-                              </strong>
-                            </td>
-
-                            <td>
-                              {
-                                version.description
-                              }
-                            </td>
-
-                            <td>
-                              <span className="badge">
-                                {version.source_type}
-                              </span>
-                            </td>
-
-                            <td>
-                              {new Date(
-                                version.created_at,
-                              ).toLocaleString()}
-                            </td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <ModelVersionsTable
+                versions={versions}
+              />
             </section>
 
 

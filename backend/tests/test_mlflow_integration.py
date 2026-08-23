@@ -111,13 +111,7 @@ def test_legacy_mlflow_description_is_cleaned_in_response(
         model_id=model["id"],
         version_number=1,
         description=legacy_description,
-        source_type="mlflow",
-        registered_model_name="PCValueAnalyzer",
-        external_version="1",
-        run_id="run-legacy",
-        artifact_source="s3://models/pc-value",
-        metrics={"mae": 12.5},
-        params={"max_depth": "8"},
+        source_type="manual",
     )
     db.add(version)
     db.commit()
@@ -132,10 +126,13 @@ def test_legacy_mlflow_description_is_cleaned_in_response(
     assert returned["description"] == (
         "Imported from MLflow — PCValueAnalyzer v1"
     )
-    assert returned["run_id"] == "run-legacy"
-    assert returned["artifact_source"] == "s3://models/pc-value"
-    assert returned["metrics"] == {"mae": 12.5}
-    assert returned["params"] == {"max_depth": "8"}
+    assert returned["source_type"] == "mlflow"
+    assert returned["registered_model_name"] == "PCValueAnalyzer"
+    assert returned["external_version"] == "1"
+    assert returned["run_id"] is None
+    assert returned["artifact_source"] is None
+    assert returned["metrics"] is None
+    assert returned["params"] is None
 
     db.refresh(version)
     assert version.description == legacy_description

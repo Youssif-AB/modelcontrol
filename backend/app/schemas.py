@@ -1,5 +1,6 @@
 from enum import Enum
 from datetime import datetime
+import re
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -69,7 +70,26 @@ class ModelVersionRead(BaseModel):
 
     @model_validator(mode="after")
     def use_concise_mlflow_description(self):
-        if self.source_type == "mlflow":
+        legacy_match = re.match(
+            r"^Imported from MLflow\.\s*"
+            r"registered_model=([^;]+);\s*"
+            r"mlflow_version=([^;]+);",
+            self.description,
+        )
+
+        if self.source_type == "mlflow" or legacy_match:
+            self.source_type = "mlflow"
+
+            if legacy_match:
+                self.registered_model_name = (
+                    self.registered_model_name
+                    or legacy_match.group(1).strip()
+                )
+                self.external_version = (
+                    self.external_version
+                    or legacy_match.group(2).strip()
+                )
+
             description = "Imported from MLflow"
 
             if (
