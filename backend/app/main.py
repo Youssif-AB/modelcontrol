@@ -1,5 +1,3 @@
-import json
-
 from fastapi import (
     Depends,
     FastAPI,
@@ -356,25 +354,9 @@ def import_mlflow_version(
     ) + 1
 
     description = (
-        "Imported from MLflow. "
-        f"registered_model="
-        f"{mlflow_version.name}; "
-        f"mlflow_version="
-        f"{mlflow_version.version}; "
-        f"run_id="
-        f"{mlflow_version.run_id}; "
-        f"source="
-        f"{mlflow_version.source}; "
-        f"metrics="
-        f"{json.dumps(
-            mlflow_version.metrics,
-            sort_keys=True
-        )}; "
-        f"params="
-        f"{json.dumps(
-            mlflow_version.params,
-            sort_keys=True
-        )}"
+        "Imported from MLflow — "
+        f"{mlflow_version.name} "
+        f"v{mlflow_version.version}"
     )
 
     record = ModelVersion(

@@ -67,6 +67,25 @@ class ModelVersionRead(BaseModel):
     params: dict[str, str] | None
     created_at: datetime
 
+    @model_validator(mode="after")
+    def use_concise_mlflow_description(self):
+        if self.source_type == "mlflow":
+            description = "Imported from MLflow"
+
+            if (
+                self.registered_model_name
+                and self.external_version
+            ):
+                description += (
+                    " — "
+                    f"{self.registered_model_name} "
+                    f"v{self.external_version}"
+                )
+
+            self.description = description
+
+        return self
+
 class LifecycleAction(str, Enum):
     submit_for_review = "submit_for_review"
     approve = "approve"
