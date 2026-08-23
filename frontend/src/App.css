@@ -1349,6 +1349,121 @@ td {
    FINDINGS
    ---------------------------------------------------------- */
 
+.mlflow-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: 18px;
+}
+
+.mlflow-model-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mlflow-model,
+.mlflow-provenance {
+  padding: 16px 18px;
+  background: rgba(8, 13, 23, 0.55);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.mlflow-model-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mlflow-model-heading p {
+  margin: 4px 0 14px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.mlflow-version-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button.mlflow-version-button {
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 54px;
+  background: var(--surface-raised);
+  border-color: var(--border);
+  box-shadow: none;
+  color: var(--text);
+}
+
+button.mlflow-version-button.selected {
+  background: rgba(91, 140, 255, 0.14);
+  border-color: rgba(91, 140, 255, 0.65);
+}
+
+.mlflow-version-button small {
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.mlflow-provenance {
+  align-self: start;
+}
+
+.provenance-list,
+.provenance-values dl {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+
+.provenance-list > div,
+.provenance-values dl > div {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.provenance-list dt,
+.provenance-values dt {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.provenance-list dd,
+.provenance-values dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.mlflow-import-result {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.provenance-values h4 {
+  margin: 16px 0 0;
+  color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .mlflow-browser {
+    grid-template-columns: 1fr;
+  }
+
+  .mlflow-model-heading {
+    flex-direction: column;
+  }
+}
+
 .finding,
 .finding-item {
   margin-top: 12px;

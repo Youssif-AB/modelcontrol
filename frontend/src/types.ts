@@ -40,6 +40,36 @@ export interface ModelVersionCreate {
   description: string;
 }
 
+export interface MLflowVersionSummary {
+  name: string;
+  version: string;
+  run_id: string | null;
+  source: string | null;
+  status: string | null;
+}
+
+export interface MLflowRegisteredModel {
+  name: string;
+  description: string | null;
+  versions: MLflowVersionSummary[];
+}
+
+export interface MLflowVersionDetails
+  extends MLflowVersionSummary {
+  metrics: Record<string, number>;
+  params: Record<string, string>;
+}
+
+export interface MLflowImportRequest {
+  model_name: string;
+  version: string;
+}
+
+export interface MLflowImportResult {
+  version: ModelVersion;
+  mlflow: MLflowVersionDetails;
+}
+
 export type LifecycleAction =
   | "submit_for_review"
   | "approve"

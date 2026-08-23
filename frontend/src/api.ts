@@ -3,6 +3,9 @@ import type {
   Finding,
   FindingCreate,
   LifecycleAction,
+  MLflowImportRequest,
+  MLflowImportResult,
+  MLflowRegisteredModel,
   ModelCreate,
   ModelRecord,
   ModelVersion,
@@ -359,6 +362,42 @@ export async function createMonitoringRecord(
     );
 
   return handleResponse<MonitoringRecord>(
+    response,
+  );
+}
+
+
+export async function fetchMLflowModels():
+Promise<MLflowRegisteredModel[]> {
+  const response =
+    await authenticatedFetch(
+      "/integrations/mlflow/models",
+    );
+
+  return handleResponse<
+    MLflowRegisteredModel[]
+  >(response);
+}
+
+
+export async function importMLflowVersion(
+  modelId: number,
+  request: MLflowImportRequest,
+): Promise<MLflowImportResult> {
+  const response =
+    await authenticatedFetch(
+      `/models/${modelId}/versions/import/mlflow`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify(request),
+      },
+    );
+
+  return handleResponse<MLflowImportResult>(
     response,
   );
 }

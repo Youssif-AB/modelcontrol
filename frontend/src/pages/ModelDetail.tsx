@@ -23,9 +23,12 @@ import {
 import AuditPanel from "../components/AuditPanel";
 import FindingsPanel from "../components/FindingsPanel";
 import MonitoringPanel from "../components/MonitoringPanel";
+import MLflowRegistryPanel
+  from "../components/MLflowRegistryPanel";
 
 import type {
   LifecycleAction,
+  MLflowImportResult,
   ModelRecord,
   ModelVersion,
 } from "../types";
@@ -243,6 +246,22 @@ function ModelDetail() {
     } finally {
       setSubmittingVersion(false);
     }
+  }
+
+
+  function handleMLflowImported(
+    result: MLflowImportResult,
+  ) {
+    setVersions((current) => [
+      ...current,
+      result.version,
+    ]);
+
+    setVersionNumber(
+      result.version.version_number + 1,
+    );
+
+    refreshAudit();
   }
 
 
@@ -607,6 +626,13 @@ function ModelDetail() {
                 </div>
               )}
             </section>
+
+
+            <MLflowRegistryPanel
+              modelId={parsedModelId}
+              canImport={canManageModel}
+              onImported={handleMLflowImported}
+            />
 
 
             <section className="inventory version-section">
