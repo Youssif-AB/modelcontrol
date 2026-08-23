@@ -500,6 +500,10 @@ function ModelDetail() {
                         <th>
                           Description
                         </th>
+
+                        <th>Source</th>
+
+                        <th>Created</th>
                       </tr>
                     </thead>
 
@@ -524,6 +528,18 @@ function ModelDetail() {
                               {
                                 version.description
                               }
+                            </td>
+
+                            <td>
+                              <span className="badge">
+                                {version.source_type}
+                              </span>
+                            </td>
+
+                            <td>
+                              {new Date(
+                                version.created_at,
+                              ).toLocaleString()}
                             </td>
                           </tr>
                         ),

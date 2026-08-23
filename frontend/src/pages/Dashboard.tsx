@@ -121,9 +121,10 @@ function Dashboard() {
 
           <button
             className="secondary-button"
+            disabled={loading}
             onClick={loadModels}
           >
-            Refresh
+            {loading ? "Refreshing..." : "Refresh"}
           </button>
 
           {(user?.role === "admin" ||
@@ -184,9 +185,12 @@ function Dashboard() {
         )}
 
         {error && (
-          <p className="error">
-            {error}
-          </p>
+          <div className="error-state" role="alert">
+            <p className="error">{error}</p>
+            <button className="secondary-button" onClick={loadModels}>
+              Retry
+            </button>
+          </div>
         )}
 
         {!loading && !error && (
