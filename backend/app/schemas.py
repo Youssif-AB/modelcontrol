@@ -58,6 +58,13 @@ class ModelVersionRead(BaseModel):
     model_id: int
     version_number: int
     description: str
+    source_type: str
+    registered_model_name: str | None
+    external_version: str | None
+    run_id: str | None
+    artifact_source: str | None
+    metrics: dict[str, float] | None
+    params: dict[str, str] | None
     created_at: datetime
 
 class LifecycleAction(str, Enum):

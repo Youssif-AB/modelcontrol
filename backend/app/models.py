@@ -7,6 +7,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -172,6 +173,42 @@ class ModelVersion(Base):
     description: Mapped[str] = mapped_column(
         Text,
         nullable=False,
+    )
+
+    source_type: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        server_default="manual",
+    )
+
+    registered_model_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    external_version: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+    )
+
+    run_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    artifact_source: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    metrics: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+
+    params: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(

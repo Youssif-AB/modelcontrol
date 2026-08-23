@@ -381,6 +381,13 @@ def import_mlflow_version(
         model_id=model_id,
         version_number=next_version,
         description=description,
+        source_type="mlflow",
+        registered_model_name=mlflow_version.name,
+        external_version=mlflow_version.version,
+        run_id=mlflow_version.run_id,
+        artifact_source=mlflow_version.source,
+        metrics=mlflow_version.metrics,
+        params=mlflow_version.params,
     )
 
     db.add(record)

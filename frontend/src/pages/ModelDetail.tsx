@@ -23,6 +23,7 @@ import AuditPanel from "../components/AuditPanel";
 import FindingsPanel from "../components/FindingsPanel";
 import MonitoringPanel from "../components/MonitoringPanel";
 import LifecyclePanel from "../components/LifecyclePanel";
+import VersionComparison from "../components/VersionComparison";
 import MLflowRegistryPanel
   from "../components/MLflowRegistryPanel";
 
@@ -532,6 +533,12 @@ function ModelDetail() {
                 </div>
               )}
             </section>
+
+
+            <VersionComparison
+              model={model}
+              versions={versions}
+            />
 
 
             <FindingsPanel

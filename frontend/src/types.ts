@@ -35,6 +35,13 @@ export interface ModelVersion {
   model_id: number;
   version_number: number;
   description: string;
+  source_type: "manual" | "mlflow";
+  registered_model_name: string | null;
+  external_version: string | null;
+  run_id: string | null;
+  artifact_source: string | null;
+  metrics: Record<string, number> | null;
+  params: Record<string, string> | null;
   created_at: string;
 }
 
