@@ -229,6 +229,7 @@ export async function createVersion(
 export async function updateLifecycle(
   modelId: number,
   action: LifecycleAction,
+  note?: string,
 ): Promise<ModelRecord> {
   const response =
     await authenticatedFetch(
@@ -241,6 +242,7 @@ export async function updateLifecycle(
         },
         body: JSON.stringify({
           action,
+          note: note || null,
         }),
       },
     );

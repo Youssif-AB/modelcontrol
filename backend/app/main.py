@@ -220,12 +220,14 @@ def add_audit_event(
     model_id: int,
     event_type: str,
     description: str,
+    actor_email: str,
 ) -> None:
     db.add(
         AuditEvent(
             model_id=model_id,
             event_type=event_type,
             description=description,
+            actor_email=actor_email,
         )
     )
 
@@ -395,6 +397,7 @@ def import_mlflow_version(
             "as ModelControl version "
             f"{next_version}."
         ),
+        current_user.email,
     )
 
     try:
@@ -492,6 +495,7 @@ def create_model(
             f"Model '{record.name}' "
             "was registered."
         ),
+        current_user.email,
     )
 
     db.commit()
@@ -608,6 +612,7 @@ def create_model_version(
             f"{version.version_number} "
             "was added."
         ),
+        current_user.email,
     )
 
     try:
@@ -726,6 +731,12 @@ def update_model_lifecycle(
         next_status
     )
 
+    note_text = (
+        f" Note: {request.note}"
+        if request.note
+        else ""
+    )
+
     add_audit_event(
         db,
         model_id,
@@ -734,7 +745,9 @@ def update_model_lifecycle(
             "Lifecycle changed from "
             f"{previous_status} "
             f"to {next_status}."
+            f"{note_text}"
         ),
+        current_user.email,
     )
 
     db.commit()
@@ -794,6 +807,7 @@ def create_finding(
             f"{finding.severity.value} "
             "severity."
         ),
+        current_user.email,
     )
 
     db.commit()
@@ -897,6 +911,7 @@ def resolve_finding(
             f"'{finding.title}' "
             "was resolved."
         ),
+        current_user.email,
     )
 
     db.commit()
@@ -1031,6 +1046,7 @@ def create_monitoring_record(
             "monitoring status recorded "
             f"as {monitoring_status}."
         ),
+        current_user.email,
     )
 
     db.commit()

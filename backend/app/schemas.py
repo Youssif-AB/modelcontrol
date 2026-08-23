@@ -1,6 +1,12 @@
 from enum import Enum
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    model_validator,
+)
 
 class RiskTier(str, Enum):
     low = "low"
@@ -63,6 +69,27 @@ class LifecycleAction(str, Enum):
 
 class LifecycleActionRequest(BaseModel):
     action: LifecycleAction
+    note: str | None = Field(
+        default=None,
+        max_length=1000,
+    )
+
+    @model_validator(mode="after")
+    def validate_note(
+        self,
+    ):
+        if self.note is not None:
+            self.note = self.note.strip() or None
+
+        if (
+            self.action == LifecycleAction.reject
+            and self.note is None
+        ):
+            raise ValueError(
+                "A rejection reason is required"
+            )
+
+        return self
 
 class FindingSeverity(str, Enum):
     low = "low"
@@ -106,6 +133,7 @@ class AuditEventRead(BaseModel):
     model_id: int
     event_type: str
     description: str
+    actor_email: EmailStr | None
     created_at: datetime
 
 class MetricDirection(str, Enum):

@@ -13,7 +13,6 @@ import {
   createVersion,
   fetchModel,
   fetchVersions,
-  updateLifecycle,
 } from "../api";
 
 import {
@@ -23,11 +22,11 @@ import {
 import AuditPanel from "../components/AuditPanel";
 import FindingsPanel from "../components/FindingsPanel";
 import MonitoringPanel from "../components/MonitoringPanel";
+import LifecyclePanel from "../components/LifecyclePanel";
 import MLflowRegistryPanel
   from "../components/MLflowRegistryPanel";
 
 import type {
-  LifecycleAction,
   MLflowImportResult,
   ModelRecord,
   ModelVersion,
@@ -67,11 +66,6 @@ function ModelDetail() {
   const [
     submittingVersion,
     setSubmittingVersion,
-  ] = useState(false);
-
-  const [
-    updatingLifecycle,
-    setUpdatingLifecycle,
   ] = useState(false);
 
   const [
@@ -172,36 +166,6 @@ function ModelDetail() {
     isAdmin || isOwnerOfModel;
 
 
-  async function handleLifecycleAction(
-    action: LifecycleAction,
-  ) {
-    try {
-      setUpdatingLifecycle(true);
-      setActionError(null);
-
-      const updated =
-        await updateLifecycle(
-          parsedModelId,
-          action,
-        );
-
-      setModel(updated);
-
-      refreshAudit();
-    } catch (err) {
-      if (err instanceof Error) {
-        setActionError(err.message);
-      } else {
-        setActionError(
-          "Unable to update lifecycle.",
-        );
-      }
-    } finally {
-      setUpdatingLifecycle(false);
-    }
-  }
-
-
   async function handleVersionSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -262,112 +226,6 @@ function ModelDetail() {
     );
 
     refreshAudit();
-  }
-
-
-  function renderLifecycleActions() {
-    if (!model) {
-      return null;
-    }
-
-    switch (model.lifecycle_status) {
-      case "draft":
-        if (canManageModel) {
-          return (
-            <button
-              disabled={updatingLifecycle}
-              onClick={() =>
-                handleLifecycleAction(
-                  "submit_for_review",
-                )
-              }
-            >
-              Submit for Review
-            </button>
-          );
-        }
-
-        return (
-          <p className="muted-text">
-            Waiting for the model owner to submit
-            this model for review.
-          </p>
-        );
-
-
-      case "under_review":
-        if (canReviewModel) {
-          return (
-            <>
-              <button
-                disabled={updatingLifecycle}
-                onClick={() =>
-                  handleLifecycleAction(
-                    "approve",
-                  )
-                }
-              >
-                Approve
-              </button>
-
-              <button
-                className="secondary-button"
-                disabled={updatingLifecycle}
-                onClick={() =>
-                  handleLifecycleAction(
-                    "reject",
-                  )
-                }
-              >
-                Reject
-              </button>
-            </>
-          );
-        }
-
-        return (
-          <p className="muted-text">
-            This model is awaiting reviewer
-            approval.
-          </p>
-        );
-
-
-      case "approved":
-        if (canManageModel) {
-          return (
-            <button
-              className="secondary-button"
-              disabled={updatingLifecycle}
-              onClick={() =>
-                handleLifecycleAction(
-                  "retire",
-                )
-              }
-            >
-              Retire Model
-            </button>
-          );
-        }
-
-        return (
-          <p className="muted-text">
-            This model is approved.
-          </p>
-        );
-
-
-      case "retired":
-        return (
-          <p className="muted-text">
-            This model has been retired.
-          </p>
-        );
-
-
-      default:
-        return null;
-    }
   }
 
 
@@ -486,42 +344,18 @@ function ModelDetail() {
             )}
 
 
+            <LifecyclePanel
+              model={model}
+              canManage={canManageModel}
+              canReview={canReviewModel}
+              onUpdated={(updated) => {
+                setModel(updated);
+                refreshAudit();
+              }}
+            />
+
+
             <section className="management-grid">
-              <div className="management-card">
-                <div className="section-heading">
-                  <div>
-                    <h2>
-                      Lifecycle
-                    </h2>
-
-                    <p>
-                      Manage the model's
-                      governance status.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="card-content">
-                  <div className="current-status">
-                    <span>
-                      Current Status
-                    </span>
-
-                    <strong>
-                      {model.lifecycle_status.replace(
-                        "_",
-                        " ",
-                      )}
-                    </strong>
-                  </div>
-
-                  <div className="lifecycle-actions">
-                    {renderLifecycleActions()}
-                  </div>
-                </div>
-              </div>
-
-
               {canManageModel && (
                 <div className="management-card">
                   <div className="section-heading">

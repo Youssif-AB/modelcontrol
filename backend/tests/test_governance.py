@@ -225,6 +225,70 @@ def test_owner_cannot_approve_own_model(
     assert response.status_code == 403
 
 
+def test_rejection_requires_reason_and_audits_actor(
+    client,
+    owner_user,
+    reviewer_user,
+):
+    owner_token = login(client, "owner@test.com")
+    reviewer_token = login(client, "reviewer@test.com")
+    model = create_model(client, owner_token)
+
+    client.patch(
+        f"/models/{model['id']}/lifecycle",
+        json={"action": "submit_for_review"},
+        headers=auth_headers(owner_token),
+    )
+
+    missing_reason = client.patch(
+        f"/models/{model['id']}/lifecycle",
+        json={"action": "reject"},
+        headers=auth_headers(reviewer_token),
+    )
+
+    assert missing_reason.status_code == 422
+
+    rejected = client.patch(
+        f"/models/{model['id']}/lifecycle",
+        json={
+            "action": "reject",
+            "note": "Validation evidence is incomplete.",
+        },
+        headers=auth_headers(reviewer_token),
+    )
+
+    assert rejected.status_code == 200
+    assert rejected.json()["lifecycle_status"] == "draft"
+
+    audit = client.get(
+        f"/models/{model['id']}/audit",
+        headers=auth_headers(owner_token),
+    ).json()
+    event = audit[-1]
+
+    assert event["actor_email"] == "reviewer@test.com"
+    assert "Validation evidence is incomplete." in event["description"]
+
+
+def test_invalid_lifecycle_transition_is_rejected(
+    client,
+    owner_user,
+):
+    owner_token = login(client, "owner@test.com")
+    model = create_model(client, owner_token)
+
+    response = client.patch(
+        f"/models/{model['id']}/lifecycle",
+        json={"action": "retire", "note": "Too early"},
+        headers=auth_headers(owner_token),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Cannot retire model from draft status"
+    )
+
+
 def test_reviewer_can_create_finding(
     client,
     owner_user,

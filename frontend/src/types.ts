@@ -17,6 +17,8 @@ export interface ModelRecord {
   model_type: ModelType;
   risk_tier: RiskTier;
   lifecycle_status: LifecycleStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ModelCreate {
@@ -33,6 +35,7 @@ export interface ModelVersion {
   model_id: number;
   version_number: number;
   description: string;
+  created_at: string;
 }
 
 export interface ModelVersionCreate {
@@ -107,6 +110,7 @@ export interface AuditEvent {
   model_id: number;
   event_type: string;
   description: string;
+  actor_email: string | null;
   created_at: string;
 }
 
