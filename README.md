@@ -1,220 +1,162 @@
 # ModelControl
 
-ModelControl is a full-stack ML model governance platform for registering, versioning, reviewing, approving, monitoring, and auditing machine-learning models.
+ModelControl is a full-stack governance application for registering, reviewing, approving, monitoring, versioning, and auditing machine-learning models. It provides one controlled inventory for model owners, independent reviewers, and administrators without attempting to replace experiment tracking or model serving systems.
 
-It combines a React/TypeScript interface with a FastAPI backend, PostgreSQL persistence, role-based governance workflows, automated testing, observability, Dockerized Linux deployment, GitHub Actions CI, and MLflow Tracking / Model Registry integration.
+The currently validated environment is local Docker Compose. Azure deployment is planned as a final-stage deployment step; this repository does not claim a completed cloud deployment.
 
 ## Architecture
 
 ```text
-                       ┌───────────────────┐
-                       │   React + Nginx   │
-                       │     Frontend      │
-                       └─────────┬─────────┘
-                                 │
-                                 ▼
-                       ┌───────────────────┐
-                       │      FastAPI      │
-                       │     Backend       │
-                       └─────┬────────┬────┘
-                             │        │
-                  governance │        │ external integration
-                             ▼        ▼
-                    ┌────────────┐  ┌──────────────┐
-                    │ PostgreSQL │  │    MLflow    │
-                    │            │  │ Tracking +   │
-                    │ models     │  │ Registry     │
-                    │ versions   │  │ runs         │
-                    │ findings   │  │ metrics      │
-                    │ monitoring │  │ parameters   │
-                    │ audit      │  │ artifacts    │
-                    └────────────┘  └──────────────┘
+Browser
+  |
+  +-- React + TypeScript (Nginx)
+          |
+          +-- FastAPI governance API
+                 |-- PostgreSQL: users, models, versions, findings,
+                 |               monitoring, and audit history
+                 +-- MLflow Tracking and Model Registry
 ```
 
-## Core capabilities
+The backend applies authentication, role checks, lifecycle transition rules, validation, audit creation, request IDs, and metrics. The frontend is a role-aware governance console with compact tables and explicit loading, empty, error, and pending states.
 
-- Model inventory with owners, risk tiers, business areas, and lifecycle status
-- Model version management
-- Draft → review → approval → retirement lifecycle state machine
-- Review findings with severity and resolution workflows
-- Model-performance monitoring with configurable warning and critical thresholds
-- Append-only application audit history for governance actions
-- JWT authentication
-- Role-based access control for Admin, Model Owner, and Reviewer roles
-- Login rate limiting
-- MLflow Tracking / Model Registry integration
-- Import of registered MLflow model versions, run metrics, parameters, and artifact references
-- PostgreSQL constraints, indexes, relationships, and Alembic migrations
-- Structured JSON logging and request IDs
-- Prometheus request and latency metrics
-- Liveness and database-readiness endpoints
-- Docker Compose Linux environment
-- GitHub Actions CI for backend tests, PostgreSQL migrations, frontend lint/build, and Docker smoke testing
+## Governance workflow
 
-## Technology
+Models move through a backend-enforced state machine:
 
-### Backend
+```text
+Draft -> Under review -> Approved -> Retired
+             |
+             +-- Reject with reason -> Draft
+```
 
-Python, FastAPI, SQLAlchemy, PostgreSQL, Alembic, PyJWT, Argon2, SlowAPI, Prometheus Client, MLflow.
+- Owners submit their models for review and may retire approved models.
+- Reviewers approve models or return them to draft with a required rejection reason.
+- Administrators may perform all lifecycle actions.
+- Optional approval and retirement notes, rejection reasons, the authenticated actor, and the resulting status are retained in the append-only audit history.
 
-### Frontend
+Invalid transitions and unauthorized actions are rejected by the API even if a client attempts to bypass the UI.
 
-React, TypeScript, Vite, React Router, Nginx.
+## Roles
 
-### Engineering
+| Capability | Admin | Model owner | Reviewer |
+|---|:---:|:---:|:---:|
+| View inventory and model evidence | Yes | Yes | Yes |
+| Register models | Yes | Own models | No |
+| Add/import versions | Yes | Own models | Read only |
+| Submit or retire | Yes | Own models | No |
+| Approve or reject | Yes | No | Yes |
+| Create findings | Yes | No | Yes |
+| Resolve findings | Yes | Own models | No |
+| Record monitoring | Yes | Own models | Read only |
 
-Docker, Docker Compose, Linux containers, pytest, GitHub Actions, structured logging, health checks, RBAC, database migrations.
+## MLflow and version comparison
+
+Authenticated users can browse registered MLflow models, versions, run IDs, statuses, and artifact sources. Owners and administrators can import a selected MLflow version into a governed ModelControl model; reviewers retain read-only registry access.
+
+An import creates the next ModelControl version and stores structured provenance:
+
+- registered model and MLflow version
+- run ID and artifact source
+- available run metrics and parameters
+- import audit event and actor
+
+The comparison view compares any two ModelControl versions in a compact table. Manually created versions truthfully show unavailable provenance rather than synthetic metrics. Current risk, lifecycle, ownership, and latest monitoring state appear as comparison context.
+
+## Findings, monitoring, and audit
+
+Review findings track severity, open/resolved state, descriptions, and resolution notes. Monitoring records compare current performance with a baseline using metric direction and configurable warning/critical thresholds.
+
+Audit history is immutable in the UI and supports text search, event-type filtering, newest/oldest ordering, readable labels, timestamps, and actor display. Historical rows created before actor recording show that the actor was not recorded.
 
 ## Run locally with Docker
 
-Create a root `.env` file from `.env.example` and supply secure local values:
+Copy `.env.example` to `.env` and replace both example secrets:
 
 ```text
-POSTGRES_PASSWORD=<local-password>
+POSTGRES_PASSWORD=<local-database-password>
 JWT_SECRET_KEY=<long-random-secret>
 ```
 
-Build and start the environment:
+Then start the stack:
 
 ```bash
 docker compose up -d --build
-```
-
-Check service status:
-
-```bash
 docker compose ps
 ```
 
-The application exposes:
+Services are exposed at:
 
-```text
-Frontend:       http://localhost:5173
-FastAPI docs:   http://localhost:8000/docs
-Prometheus:     http://localhost:8000/metrics/
-MLflow UI:      http://localhost:5000
-```
+| Service | URL |
+|---|---|
+| ModelControl | http://localhost:5173 |
+| FastAPI documentation | http://localhost:8000/docs |
+| Prometheus metrics | http://localhost:8000/metrics/ |
+| MLflow | http://localhost:5000 |
 
-## Create the first administrator
+The backend container applies Alembic migrations before starting. Create the first administrator with:
 
 ```bash
 docker compose exec backend python create_admin.py
 ```
 
-Log into ModelControl through the frontend using the account you create.
+## Demo workflow
 
-## Seed MLflow demo data
+1. Create an administrator and sign in.
+2. Create owner and reviewer users through `POST /auth/users` in the API documentation.
+3. Register a model as an owner.
+4. Seed a real MLflow run and registered version:
 
-Create a real MLflow experiment run with parameters, metrics, an artifact, and a registered model version:
+   ```bash
+   docker compose exec backend python -m scripts.seed_mlflow
+   ```
 
-```bash
-docker compose exec backend python -m scripts.seed_mlflow
-```
+5. Browse `DemoChurnModel` in the model detail page and import a version.
+6. Compare the imported version with another manual or MLflow version.
+7. Submit the model, sign in as a reviewer, record findings, and approve or reject it.
+8. Search the audit history to verify actions, notes, and actors.
 
-Open the MLflow UI:
+## Development checks
 
-```text
-http://localhost:5000
-```
-
-The seed creates a registered model named:
-
-```text
-DemoChurnModel
-```
-
-## Test the MLflow integration
-
-Authenticate through Swagger at:
-
-```text
-http://localhost:8000/docs
-```
-
-List registered MLflow models:
-
-```text
-GET /integrations/mlflow/models
-```
-
-Create a ModelControl model, note its ID, then import the MLflow model version:
-
-```text
-POST /models/{model_id}/versions/import/mlflow
-```
-
-Example request:
-
-```json
-{
-  "model_name": "DemoChurnModel",
-  "version": "1"
-}
-```
-
-ModelControl retrieves the registered version from MLflow, reads the associated run metrics and parameters, creates a governed ModelControl version, and records the import in the audit history.
-
-## Governance roles
-
-### Admin
-
-Can perform all governance actions.
-
-### Model Owner
-
-Can register owned models, create versions, submit models for review, record monitoring results, resolve findings, and retire owned models.
-
-### Reviewer
-
-Can review models, approve or reject models under review, and create governance findings.
-
-## Automated tests
-
-Run the backend suite:
+Backend:
 
 ```bash
 cd backend
 pytest -v
+alembic heads
 ```
 
-Run frontend quality checks:
+Frontend:
 
 ```bash
 cd frontend
+npm ci
 npm run lint
+npm run test
 npm run build
 ```
 
-GitHub Actions executes backend tests, validates the PostgreSQL migration chain, checks the frontend production build, builds the Docker environment, and smoke-tests the running services.
+Stack validation:
 
-## Observability
-
-Liveness:
-
-```text
-GET /health
+```bash
+docker compose config
+docker compose build
+docker compose up -d
+docker compose ps
 ```
 
-Database readiness:
+The frontend tests use Vitest, React Testing Library, user-event, and jsdom. They cover lifecycle permissions and rejection, MLflow loading/import/failure behavior, audit filtering, and expired-session handling. Pytest covers authentication, lifecycle/RBAC, findings, monitoring, MLflow permissions and structured imports, audit creation, health, readiness, request IDs, and Prometheus output.
 
-```text
-GET /ready
-```
+GitHub Actions installs dependencies, applies migrations to PostgreSQL, runs backend tests, runs frontend lint/tests/build, validates Compose, builds the images, starts the stack, and checks backend, frontend, and MLflow health.
 
-Prometheus metrics:
+## Security and operations
 
-```text
-GET /metrics/
-```
+- JWT secrets and database credentials come from environment variables and are not stored in source.
+- Passwords use Argon2 hashing; login requests are rate limited.
+- CORS and trusted hosts are explicitly configurable.
+- Nginx and FastAPI set defensive response headers.
+- API errors avoid exposing internal exceptions.
+- Session tokens use browser session storage and are cleared on a 401 response.
+- Structured request logs include request ID, route, status, and latency.
+- `/health`, `/ready`, and `/metrics/` remain available for container and operational checks.
 
-API responses include an `X-Request-ID`, and backend logs emit structured JSON containing the request ID, route, status code, and request latency.
-
-## Security and reliability
-
-ModelControl uses JWT authentication, Argon2 password hashing, RBAC enforcement, login rate limiting, explicit CORS configuration, trusted-host validation, security response headers, PostgreSQL constraints, environment-based secrets, database connection pre-ping, health checks, and container restart policies.
-
-## Project status
-
-The current implementation demonstrates the complete core governance workflow and local production-style infrastructure.
-
-Cloud deployment is intentionally outside the current project scope.
+For a later Azure deployment, use managed secrets, a managed PostgreSQL service, persistent artifact storage, HTTPS, a stable same-origin API route or explicit production CORS/CSP configuration, and the existing container health endpoints. No Azure resources are created by this project setup.
