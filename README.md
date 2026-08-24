@@ -1,3 +1,5 @@
+<img width="2962" height="1361" alt="image" src="https://github.com/user-attachments/assets/81183cb2-d2f3-4f42-bf65-791362870e38" />
+
 # ModelControl
 
 ModelControl is a full-stack governance application for registering, reviewing, approving, monitoring, versioning, and auditing machine-learning models. It provides one controlled inventory for model owners, independent reviewers, and administrators without attempting to replace experiment tracking or model serving systems.
